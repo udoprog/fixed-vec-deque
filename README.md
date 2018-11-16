@@ -6,10 +6,10 @@ only provides referential access to what it is storing.
 We try as much as possible to mimic the API of [VecDeque], but due to only dealing with
 references, some differences are inevitable.
 
-For more information, see the [documentation].
+For information on how to use it, see the [Documentation].
 
 [VecDeque]: https://doc.rust-lang.org/std/collections/struct.VecDeque.html
-[documentation]: https://docs.rs/fixedvecdeque
+[documentation]: https://docs.rs/fixed-vec-deque
 
 ## LICENSE
 
