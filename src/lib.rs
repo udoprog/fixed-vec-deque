@@ -42,11 +42,17 @@
 //! A consequence of this is that this structure _never_ modifies the data it contains, even if it
 //! has been _popped_.
 //!
-//! # When should you used `FixedVecDeque`?
+//! # When should I use `FixedVecDeque`?
 //!
-//! If you have an array of large structures, that you would like to treat like a queue, and you
-//! want as little memory pressure as possible when modifying them.
+//! Generally when the following holds:
 //!
+//! * You have a maximum number of elements that you need to store for a short period of time.
+//! * You only need to modify part of the element from the default when pushed.
+//!
+//! A conventional collection require you to write a "complete" element every time it is added to
+//! it.
+//! With `FixedVecDeque` we can instead modify the existing elements in place, and keep track of
+//! how many such logical "additions" we have done.
 //! For example:
 //!
 //! ```rust
