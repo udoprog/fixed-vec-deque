@@ -42,14 +42,67 @@
 //! A consequence of this is that this structure _never_ modifies the data it contains, even if it
 //! has been _popped_.
 //!
+//! # When should you used `FixedVecDeque`?
+//!
+//! If you have an array of large structures, that you would like to treat like a queue, and you
+//! want as little memory pressure as possible when modifying them.
+//!
+//! For example:
+//!
+//! ```rust
+//! # extern crate fixed_vec_deque;
+//! use fixed_vec_deque::FixedVecDeque;
+//! use std::collections::VecDeque;
+//!
+//! pub struct BigStruct {
+//!     fields: [u64; 100],
+//! }
+//!
+//! impl Default for BigStruct {
+//!     fn default() -> Self {
+//!         BigStruct {
+//!             fields: [0u64; 100],
+//!         }
+//!     }
+//! }
+//!
+//! let mut deq = FixedVecDeque::<[BigStruct; 0x100]>::new();
+//!
+//! for i in 0..100 {
+//!     deq.push_back().fields[i] = i as u64;
+//!
+//!     let mut count = 0;
+//!
+//!     for big in &deq {
+//!         count += 1;
+//!         assert_eq!(big.fields[i], i as u64);
+//!     }
+//!
+//!     assert_eq!(count, 1);
+//!     deq.clear();
+//! }
+//!
+//! deq.clear();
+//!
+//! // Note: modifications are still stored in the ring buffer and will be visible the next time we
+//! // push to it unless we cleared it.
+//! for i in 0..100 {
+//!     assert_eq!(deq.push_back().fields[i], i as u64);
+//!     deq.clear();
+//! }
+//! ```
+//!
 //! [`push_back`]: struct.FixedVecDeque.html#method.push_back
 //! [`push_front`]: struct.FixedVecDeque.html#method.push_front
 //! [`pop_back`]: struct.FixedVecDeque.html#method.pop_back
 //! [`pop_front`]: struct.FixedVecDeque.html#method.pop_front
 
+#![cfg_attr(feature = "unstable", feature(test))]
+
 use std::mem;
 use std::ptr;
 use std::slice;
+use std::marker;
 
 /// A double-ended queue implemented with a fixed buffer.
 pub struct FixedVecDeque<T>
@@ -119,6 +172,25 @@ where
         self.len == T::size()
     }
 
+    /// Returns the number of elements in the `FixedVecDeque`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate fixed_vec_deque;
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut v = FixedVecDeque::<[u32; 2]>::new();
+    /// assert_eq!(v.len(), 0);
+    /// *v.push_back() = 1;
+    /// assert_eq!(v.len(), 1);
+    /// *v.push_back() = 1;
+    /// assert_eq!(v.len(), 2);
+    /// ```
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
     /// Provides a reference to the front element, or `None` if the `FixedVecDeque` is
     /// empty.
     ///
@@ -139,7 +211,7 @@ where
             return None;
         }
 
-        let front = Self::wrap_sub(self.ptr, self.len);
+        let front = T::wrap_sub(self.ptr, self.len);
         Some(unsafe { self.buffer(front) })
     }
 
@@ -172,7 +244,7 @@ where
             return None;
         }
 
-        let front = Self::wrap_sub(self.ptr, self.len);
+        let front = T::wrap_sub(self.ptr, self.len);
         Some(unsafe { self.buffer_mut(front) })
     }
 
@@ -198,7 +270,7 @@ where
             return None;
         }
 
-        let back = Self::wrap_sub(self.ptr, 1);
+        let back = T::wrap_sub(self.ptr, 1);
         Some(unsafe { self.buffer(back) })
     }
 
@@ -229,7 +301,7 @@ where
             return None;
         }
 
-        let back = Self::wrap_sub(self.ptr, 1);
+        let back = T::wrap_sub(self.ptr, 1);
         Some(unsafe { self.buffer_mut(back) })
     }
 
@@ -265,13 +337,13 @@ where
     pub fn push_front(&mut self) -> &mut T::Item {
         // overwriting existing elements.
         if self.len == T::size() {
-            self.ptr = Self::wrap_sub(self.ptr, 1);
+            self.ptr = T::wrap_sub(self.ptr, 1);
             let front = self.ptr;
             return unsafe { self.buffer_mut(front) };
         }
 
         self.len += 1;
-        let front = Self::wrap_sub(self.ptr, self.len);
+        let front = T::wrap_sub(self.ptr, self.len);
         unsafe { self.buffer_mut(front) }
     }
 
@@ -297,7 +369,7 @@ where
             return None;
         }
 
-        let tail = Self::wrap_sub(self.ptr, self.len);
+        let tail = T::wrap_sub(self.ptr, self.len);
         self.len -= 1;
         unsafe { Some(self.buffer(tail)) }
     }
@@ -359,7 +431,7 @@ where
     /// ```
     pub fn push_back(&mut self) -> &mut T::Item {
         let head = self.ptr;
-        self.ptr = Self::wrap_add(self.ptr, 1);
+        self.ptr = T::wrap_add(self.ptr, 1);
 
         if self.len < T::size() {
             self.len += 1;
@@ -388,9 +460,56 @@ where
             return None;
         }
 
-        self.ptr = Self::wrap_sub(self.ptr, 1);
+        self.ptr = T::wrap_sub(self.ptr, 1);
         self.len -= 1;
         unsafe { Some(self.buffer(self.ptr)) }
+    }
+
+    /// Returns a front-to-back iterator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate fixed_vec_deque;
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
+    /// *buf.push_back() = 5;
+    /// *buf.push_back() = 3;
+    /// *buf.push_back() = 4;
+    ///
+    /// let b: &[_] = &[&5, &3, &4];
+    /// let c: Vec<&u32> = buf.iter().collect();
+    /// assert_eq!(&c[..], b);
+    /// ```
+    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+        Iter {
+            data: self.data.ptr(),
+            start: T::wrap_sub(self.ptr, self.len),
+            end: self.ptr,
+            marker: marker::PhantomData,
+        }
+    }
+
+    /// Clears the `FixedVecDeque`.
+    ///
+    /// The stored values will _not_ be deleted.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate fixed_vec_deque;
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut v = FixedVecDeque::<[u32; 1]>::new();
+    /// *v.push_back() = 1;
+    /// v.clear();
+    /// assert!(v.is_empty());
+    /// ```
+    #[inline]
+    pub fn clear(&mut self) {
+        self.ptr = 0;
+        self.len = 0;
     }
 
     /// Returns a pair of slices which contain, in order, the contents of the `FixedVecDeque`.
@@ -424,7 +543,7 @@ where
         }
 
         let head = self.ptr;
-        let tail = Self::wrap_sub(self.ptr, self.len);
+        let tail = T::wrap_sub(self.ptr, self.len);
         let buf = unsafe { self.buffer_as_mut_slice() };
         RingSlices::ring_slices(buf, head, tail)
     }
@@ -460,26 +579,8 @@ where
         }
 
         let head = self.ptr;
-        let tail = Self::wrap_sub(head, self.len);
+        let tail = T::wrap_sub(head, self.len);
         RingSlices::ring_slices(buf, head, tail)
-    }
-
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index + addend.
-    #[inline]
-    fn wrap_add(idx: usize, addend: usize) -> usize {
-        (idx + addend) % T::size()
-    }
-
-    /// Returns the index in the underlying buffer for a given logical element
-    /// index - subtrahend.
-    #[inline]
-    fn wrap_sub(idx: usize, subtrahend: usize) -> usize {
-        if subtrahend > idx {
-            T::size() - (subtrahend - idx)
-        } else {
-            idx - subtrahend
-        }
     }
 
     /// Turn ptr into a slice
@@ -502,7 +603,7 @@ where
 
     /// Takes a mutable reference of a value from the buffer.
     #[inline]
-    unsafe fn buffer_mut(&mut self, off: usize) -> &mut T::Item {
+    unsafe fn buffer_mut<'a>(&'a mut self, off: usize) -> &'a mut T::Item {
         &mut *self.data.ptr_mut().add(off)
     }
 
@@ -521,6 +622,38 @@ where
     }
 }
 
+pub struct Iter<'a, T: 'a> where T: Array {
+    data: *const T::Item,
+    start: usize,
+    end: usize,
+    marker: marker::PhantomData<&'a ()>,
+}
+
+impl<'a, T: 'a> Iterator for Iter<'a, T>
+    where T: Array
+{
+    type Item = &'a T::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.start == self.end {
+            return None;
+        }
+
+        let item = self.start;
+        self.start = T::wrap_add(self.start, 1);
+        Some(unsafe { &* self.data.add(item) })
+    }
+}
+
+impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T> where T: Array {
+    type Item = &'a T::Item;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// Types that can be used as the backing store for a FixedVecDeque.
 pub unsafe trait Array {
     /// The type of the array's elements.
@@ -531,6 +664,24 @@ pub unsafe trait Array {
     fn ptr(&self) -> *const Self::Item;
     /// Returns a mutable pointer to the first element of the array.
     fn ptr_mut(&mut self) -> *mut Self::Item;
+
+    /// Returns the index in the underlying buffer for a given logical element
+    /// index + addend.
+    #[inline]
+    fn wrap_add(idx: usize, addend: usize) -> usize {
+        (idx + addend) % Self::size()
+    }
+
+    /// Returns the index in the underlying buffer for a given logical element
+    /// index - subtrahend.
+    #[inline]
+    fn wrap_sub(idx: usize, subtrahend: usize) -> usize {
+        if subtrahend > idx {
+            Self::size() - (subtrahend - idx)
+        } else {
+            idx - subtrahend
+        }
+    }
 }
 
 macro_rules! impl_array(
@@ -713,6 +864,58 @@ mod tests {
                 if let Some(v) = self.value.take() {
                     *v += 1;
                 }
+            }
+        }
+    }
+}
+
+#[cfg(all(feature = "unstable", test))]
+mod benches {
+    extern crate test;
+
+    use super::FixedVecDeque;
+
+    #[bench]
+    fn bench_push_back_100(b: &mut test::Bencher) {
+        let mut deq = FixedVecDeque::<[BigStruct; 0x100]>::new();
+
+        b.iter(|| {
+            for i in 0..100 {
+                let big = deq.push_back();
+                big.fields[0] = i;
+            }
+
+            deq.clear();
+        })
+    }
+
+    #[bench]
+    fn bench_push_back_100_vec_deque(b: &mut test::Bencher) {
+        use std::collections::VecDeque;
+
+        let mut deq = VecDeque::new();
+
+        b.iter(|| {
+            for i in 0..100 {
+                let mut big = BigStruct::default();
+                big.fields[0] = i;
+                deq.push_back(big);
+            }
+
+            deq.clear();
+        })
+    }
+
+    pub struct BigStruct {
+        fields: [u64; 64],
+    }
+
+    impl Default for BigStruct {
+        fn default() -> Self {
+            let fields = [0u64; 64];
+
+            BigStruct {
+                fields,
             }
         }
     }
