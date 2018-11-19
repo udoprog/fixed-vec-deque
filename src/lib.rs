@@ -105,6 +105,7 @@
 
 #![cfg_attr(feature = "unstable", feature(test))]
 
+use std::cmp;
 use std::fmt;
 use std::iter::FromIterator;
 use std::marker;
@@ -1017,6 +1018,27 @@ array_impls! {
     10 11 12 13 14 15 16 17 18 19
     20 21 22 23 24 25 26 27 28 29
     30 31 32
+}
+
+impl<A> PartialOrd for FixedVecDeque<A>
+where
+    A: Array,
+    A::Item: PartialOrd,
+{
+    fn partial_cmp(&self, other: &FixedVecDeque<A>) -> Option<cmp::Ordering> {
+        self.iter().partial_cmp(other.iter())
+    }
+}
+
+impl<A> Ord for FixedVecDeque<A>
+where
+    A: Array,
+    A::Item: Ord,
+{
+    #[inline]
+    fn cmp(&self, other: &FixedVecDeque<A>) -> cmp::Ordering {
+        self.iter().cmp(other.iter())
+    }
 }
 
 impl_array!(
