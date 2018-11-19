@@ -372,14 +372,14 @@ where
     /// assert_eq!(d.pop_front(), Some(&2));
     /// assert_eq!(d.pop_front(), None);
     /// ```
-    pub fn pop_front(&mut self) -> Option<&T::Item> {
+    pub fn pop_front(&mut self) -> Option<&mut T::Item> {
         if self.is_empty() {
             return None;
         }
 
         let tail = T::wrap_sub(self.ptr, self.len);
         self.len -= 1;
-        unsafe { Some(self.buffer(tail)) }
+        unsafe { Some(self.buffer_mut(tail)) }
     }
 
     /// Appends an element to the back of the `FixedVecDeque` by returning a mutable reference that
@@ -463,14 +463,15 @@ where
     /// *buf.push_back() = 3;
     /// assert_eq!(buf.pop_back(), Some(&3));
     /// ```
-    pub fn pop_back(&mut self) -> Option<&T::Item> {
+    pub fn pop_back(&mut self) -> Option<&mut T::Item> {
         if self.is_empty() {
             return None;
         }
 
-        self.ptr = T::wrap_sub(self.ptr, 1);
+        let ptr = T::wrap_sub(self.ptr, 1);
+        self.ptr = ptr;
         self.len -= 1;
-        unsafe { Some(self.buffer(self.ptr)) }
+        unsafe { Some(self.buffer_mut(ptr)) }
     }
 
     /// Returns a front-to-back iterator.
