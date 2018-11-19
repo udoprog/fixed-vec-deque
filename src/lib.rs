@@ -105,12 +105,12 @@
 
 #![cfg_attr(feature = "unstable", feature(test))]
 
+use std::iter::FromIterator;
+use std::marker;
 use std::mem;
 use std::ops::{Index, IndexMut};
 use std::ptr;
 use std::slice;
-use std::marker;
-use std::iter::FromIterator;
 
 /// A double-ended queue implemented with a fixed buffer.
 pub struct FixedVecDeque<T>
@@ -710,7 +710,10 @@ where
     }
 }
 
-impl<T> Index<usize> for FixedVecDeque<T> where T: Array {
+impl<T> Index<usize> for FixedVecDeque<T>
+where
+    T: Array,
+{
     type Output = T::Item;
 
     fn index(&self, index: usize) -> &T::Item {
@@ -718,7 +721,10 @@ impl<T> Index<usize> for FixedVecDeque<T> where T: Array {
     }
 }
 
-impl<T> IndexMut<usize> for FixedVecDeque<T> where T: Array {
+impl<T> IndexMut<usize> for FixedVecDeque<T>
+where
+    T: Array,
+{
     fn index_mut(&mut self, index: usize) -> &mut T::Item {
         self.get_mut(index).expect("Out of bounds access")
     }
@@ -731,7 +737,10 @@ impl<T> IndexMut<usize> for FixedVecDeque<T> where T: Array {
 ///
 /// [`iter`]: struct.FixedVecDeque.html#method.iter
 /// [`FixedVecDeque`]: struct.FixedVecDeque.html
-pub struct Iter<'a, T: 'a> where T: Array {
+pub struct Iter<'a, T: 'a>
+where
+    T: Array,
+{
     data: *const T::Item,
     ptr: usize,
     len: usize,
@@ -739,7 +748,8 @@ pub struct Iter<'a, T: 'a> where T: Array {
 }
 
 impl<'a, T: 'a> Iterator for Iter<'a, T>
-    where T: Array
+where
+    T: Array,
 {
     type Item = &'a T::Item;
 
@@ -750,7 +760,7 @@ impl<'a, T: 'a> Iterator for Iter<'a, T>
 
         let ptr = T::wrap_sub(self.ptr, self.len);
         self.len -= 1;
-        Some(unsafe { &* self.data.add(ptr) })
+        Some(unsafe { &*self.data.add(ptr) })
     }
 }
 
@@ -761,7 +771,10 @@ impl<'a, T: 'a> Iterator for Iter<'a, T>
 ///
 /// [`iter`]: struct.FixedVecDeque.html#method.iter
 /// [`FixedVecDeque`]: struct.FixedVecDeque.html
-pub struct IterMut<'a, T: 'a> where T: Array {
+pub struct IterMut<'a, T: 'a>
+where
+    T: Array,
+{
     data: *mut T::Item,
     ptr: usize,
     len: usize,
@@ -769,7 +782,8 @@ pub struct IterMut<'a, T: 'a> where T: Array {
 }
 
 impl<'a, T: 'a> Iterator for IterMut<'a, T>
-    where T: Array
+where
+    T: Array,
 {
     type Item = &'a mut T::Item;
 
@@ -780,11 +794,14 @@ impl<'a, T: 'a> Iterator for IterMut<'a, T>
 
         let ptr = T::wrap_sub(self.ptr, self.len);
         self.len -= 1;
-        Some(unsafe { &mut * self.data.add(ptr) })
+        Some(unsafe { &mut *self.data.add(ptr) })
     }
 }
 
-impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T> where T: Array {
+impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T>
+where
+    T: Array,
+{
     type Item = &'a T::Item;
     type IntoIter = Iter<'a, T>;
 
@@ -793,7 +810,10 @@ impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T> where T: Array {
     }
 }
 
-impl<A> Extend<A::Item> for FixedVecDeque<A> where A: Array {
+impl<A> Extend<A::Item> for FixedVecDeque<A>
+where
+    A: Array,
+{
     fn extend<T: IntoIterator<Item = A::Item>>(&mut self, iter: T) {
         for elt in iter {
             *self.push_back() = elt;
@@ -801,7 +821,10 @@ impl<A> Extend<A::Item> for FixedVecDeque<A> where A: Array {
     }
 }
 
-impl<A> FromIterator<A::Item> for FixedVecDeque<A> where A: Array {
+impl<A> FromIterator<A::Item> for FixedVecDeque<A>
+where
+    A: Array,
+{
     fn from_iter<T: IntoIterator<Item = A::Item>>(iter: T) -> FixedVecDeque<A> {
         let mut deq = FixedVecDeque::new();
         deq.extend(iter.into_iter());
@@ -1100,9 +1123,7 @@ mod benches {
         fn default() -> Self {
             let fields = [0u64; 64];
 
-            BigStruct {
-                fields,
-            }
+            BigStruct { fields }
         }
     }
 }
