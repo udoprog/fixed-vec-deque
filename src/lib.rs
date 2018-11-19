@@ -1032,7 +1032,7 @@ where
 
     #[inline]
     fn is_contiguous(&self) -> bool {
-        self.tail() < self.ptr
+        self.len != T::size() && self.tail() <= self.ptr
     }
 
     /// Copies a contiguous block of memory len long from src to dst
