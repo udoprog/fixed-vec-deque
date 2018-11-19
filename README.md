@@ -1,4 +1,5 @@
 # fixed-vec-deque
+[![Build Status](https://travis-ci.org/udoprog/fixed-vec-deque.svg?branch=master)](https://travis-ci.org/udoprog/fixed-vec-deque)
 
 **Note:** this crate is still in heavy development. Please be careful!
 
