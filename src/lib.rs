@@ -253,7 +253,7 @@ where
             return None;
         }
 
-        let front = T::wrap_sub(self.ptr, self.len);
+        let front = self.tail();
         Some(unsafe { self.buffer(front) })
     }
 
@@ -285,7 +285,7 @@ where
             return None;
         }
 
-        let front = T::wrap_sub(self.ptr, self.len);
+        let front = self.tail();
         Some(unsafe { self.buffer_mut(front) })
     }
 
@@ -381,7 +381,7 @@ where
         }
 
         self.len += 1;
-        let front = T::wrap_sub(self.ptr, self.len);
+        let front = self.tail();
         unsafe { self.buffer_mut(front) }
     }
 
@@ -406,7 +406,7 @@ where
             return None;
         }
 
-        let tail = T::wrap_sub(self.ptr, self.len);
+        let tail = self.tail();
         self.len -= 1;
         unsafe { Some(self.buffer_mut(tail)) }
     }
@@ -568,6 +568,195 @@ where
         self.pop_front()
     }
 
+    /// Removes and returns the element at `index` from the `VecDeque`.
+    /// Whichever end is closer to the removal point will be moved to make
+    /// room, and all the affected elements will be moved to new positions.
+    /// Returns `None` if `index` is out of bounds.
+    ///
+    /// Element at index 0 is the front of the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
+    /// *buf.push_back() = 1;
+    /// *buf.push_back() = 2;
+    /// *buf.push_back() = 3;
+    /// assert_eq!(buf, [1, 2, 3]);
+    ///
+    /// assert_eq!(buf.remove(1), Some(&mut 2));
+    /// assert_eq!(buf, [1, 3]);
+    /// ```
+    pub fn remove(&mut self, index: usize) -> Option<&mut T::Item> where T::Item: fmt::Debug {
+        // if empty, nothing to do.
+        if T::size() == 0 || index >= self.len {
+            return None;
+        }
+
+        // There are three main cases:
+        //  Elements are contiguous
+        //  Elements are discontiguous and the removal is in the tail section
+        //  Elements are discontiguous and the removal is in the head section
+        //      - special case when elements are technically contiguous,
+        //        but self.head = 0
+        //
+        // For each of those there are two more cases:
+        //  Insert is closer to tail
+        //  Insert is closer to head
+        //
+        // Key: H - self.head
+        //      T - self.tail
+        //      o - Valid element
+        //      x - Element marked for removal
+        //      R - Indicates element that is being removed
+        //      M - Indicates element was moved
+
+        let idx = self.ptr_index(index);
+        let head = self.ptr;
+        let tail = self.tail();
+
+        let tmp = unsafe { self.buffer_read(idx) };
+
+        let distance_to_tail = index;
+        let distance_to_head = self.len() - index;
+
+        let contiguous = self.is_contiguous();
+
+        let idx = match (contiguous, distance_to_tail <= distance_to_head, idx >= tail) {
+            (true, true, _) => {
+                unsafe {
+                    // contiguous, remove closer to tail:
+                    //
+                    //             T   R         H
+                    //      [. . . o o x o o o o . . . . . .]
+                    //
+                    //               T           H
+                    //      [. . . . o o o o o o . . . . . .]
+                    //               M M
+
+                    self.copy(tail + 1, tail, index);
+                    tail
+                }
+            }
+            (true, false, _) => {
+                unsafe {
+                    // contiguous, remove closer to head:
+                    //
+                    //             T       R     H
+                    //      [. . . o o o o x o o . . . . . .]
+                    //
+                    //             T           H
+                    //      [. . . o o o o o o . . . . . . .]
+                    //                     M M
+
+                    self.copy(idx, idx + 1, head - idx - 1);
+                    self.ptr -= 1;
+                    head
+                }
+            }
+            (false, true, true) => {
+                unsafe {
+                    // discontiguous, remove closer to tail, tail section:
+                    //
+                    //                   H         T   R
+                    //      [o o o o o o . . . . . o o x o o]
+                    //
+                    //                   H           T
+                    //      [o o o o o o . . . . . . o o o o]
+                    //                               M M
+
+                    self.copy(tail + 1, tail, index);
+                    tail
+                }
+            }
+            (false, false, false) => {
+                unsafe {
+                    // discontiguous, remove closer to head, head section:
+                    //
+                    //               R     H           T
+                    //      [o o o o x o o . . . . . . o o o]
+                    //
+                    //                   H             T
+                    //      [o o o o o o . . . . . . . o o o]
+                    //               M M
+
+                    self.copy(idx, idx + 1, head - idx - 1);
+                    self.ptr -= 1;
+                    head
+                }
+            }
+            (false, false, true) => {
+                unsafe {
+                    // discontiguous, remove closer to head, tail section:
+                    //
+                    //             H           T         R
+                    //      [o o o . . . . . . o o o o o x o]
+                    //
+                    //           H             T
+                    //      [o o . . . . . . . o o o o o o o]
+                    //       M M                         M M
+                    //
+                    // or quasi-discontiguous, remove next to head, tail section:
+                    //
+                    //       H                 T         R
+                    //      [. . . . . . . . . o o o o o x o]
+                    //
+                    //                         T           H
+                    //      [. . . . . . . . . o o o o o o .]
+                    //                                   M
+
+                    // draw in elements in the tail section
+                    self.copy(idx, idx + 1, T::size() - idx - 1);
+
+                    // Prevents underflow.
+                    if head != 0 {
+                        // copy first element into empty spot
+                        self.copy(T::size() - 1, 0, 1);
+
+                        // move elements in the head section backwards
+                        self.copy(0, 1, head - 1);
+                    }
+
+                    self.ptr = T::wrap_sub(self.ptr, 1);
+                    head
+                }
+            }
+            (false, true, false) => {
+                unsafe {
+                    // discontiguous, remove closer to tail, head section:
+                    //
+                    //           R               H     T
+                    //      [o o x o o o o o o o . . . o o o]
+                    //
+                    //                           H       T
+                    //      [o o o o o o o o o o . . . . o o]
+                    //       M M M                       M M
+
+                    // draw in elements up to idx
+                    self.copy(1, 0, idx);
+
+                    // copy last element into empty spot
+                    self.copy(0, T::size() - 1, 1);
+
+                    // move elements from tail to end forward, excluding the last one
+                    self.copy(tail + 1, tail, T::size() - tail - 1);
+
+                    tail
+                }
+            }
+        };
+
+        self.len -= 1;
+
+        unsafe {
+            // write temporary into shifted location since we need a stable memory location for it!
+            self.buffer_write(idx, tmp);
+            Some(self.buffer_mut(idx))
+        }
+    }
+
     /// Returns a front-to-back iterator.
     ///
     /// # Examples
@@ -669,7 +858,7 @@ where
         }
 
         let head = self.ptr;
-        let tail = T::wrap_sub(self.ptr, self.len);
+        let tail = self.tail();
         let buf = unsafe { self.buffer_as_mut_slice() };
         RingSlices::ring_slices(buf, head, tail)
     }
@@ -753,7 +942,7 @@ where
     /// ```
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T::Item> {
         if index < self.len {
-            let off = T::wrap_add(T::wrap_sub(self.ptr, self.len), index);
+            let off = self.ptr_index(index);
             Some(unsafe { self.buffer_mut(off) })
         } else {
             None
@@ -796,7 +985,13 @@ where
     /// container.
     #[inline]
     fn ptr_index(&self, i: usize) -> usize {
-        T::wrap_add(T::wrap_sub(self.ptr, self.len), i)
+        T::wrap_add(self.tail(), i)
+    }
+
+    /// Get index of tail.
+    #[inline]
+    fn tail(&self) -> usize {
+        T::wrap_sub(self.ptr, self.len)
     }
 
     /// Turn ptr into a slice
@@ -821,6 +1016,44 @@ where
     #[inline]
     unsafe fn buffer_mut<'a>(&'a mut self, off: usize) -> &'a mut T::Item {
         &mut *self.data.ptr_mut().add(off)
+    }
+
+    #[inline]
+    unsafe fn buffer_read(&mut self, off: usize) -> T::Item {
+        debug_assert!(off < T::size());
+        ptr::read(self.data.ptr().add(off))
+    }
+
+    #[inline]
+    unsafe fn buffer_write(&mut self, off: usize, data: T::Item) {
+        debug_assert!(off < T::size());
+        ptr::write(self.data.ptr_mut().add(off), data);
+    }
+
+    #[inline]
+    fn is_contiguous(&self) -> bool {
+        self.tail() < self.ptr
+    }
+
+    /// Copies a contiguous block of memory len long from src to dst
+    #[inline]
+    unsafe fn copy(&mut self, dst: usize, src: usize, len: usize) {
+        debug_assert!(dst + len <= T::size(),
+                      "cpy dst={} src={} len={} cap={}",
+                      dst,
+                      src,
+                      len,
+                      T::size());
+
+        debug_assert!(src + len <= T::size(),
+                      "cpy dst={} src={} len={} cap={}",
+                      dst,
+                      src,
+                      len,
+                      T::size());
+
+        let m = self.data.ptr_mut();
+        ptr::copy(m.add(src), m.add(dst), len);
     }
 
     /// Initialize stored data using `Default::default()`
@@ -1375,6 +1608,65 @@ mod tests {
         }
         test(true);
         test(false);
+    }
+
+    #[test]
+    fn test_basic_remove() {
+        let mut a = FixedVecDeque::<[usize; 16]>::new();
+        *a.push_front() = 2;
+        *a.push_front() = 1;
+        *a.push_back() = 3;
+        *a.push_back() = 4;
+
+        assert_eq!(a, [1, 2, 3, 4]);
+
+        assert_eq!(a.remove(2), Some(&mut 3));
+        assert_eq!(a, [1, 2, 4]);
+        assert_eq!(a.remove(2), Some(&mut 4));
+        assert_eq!(a, [1, 2]);
+        assert_eq!(a.remove(0), Some(&mut 1));
+        assert_eq!(a, [2]);
+        assert_eq!(a.remove(0), Some(&mut 2));
+        assert_eq!(a, []);
+    }
+
+    #[test]
+    fn test_remove() {
+        // This test checks that every single combination of tail position, length, and
+        // removal position is tested. Capacity 15 should be large enough to cover every case.
+
+        let mut tester = FixedVecDeque::<[usize; 16]>::new();
+
+        // can't guarantee we got 15, so have to get what we got.
+        // 15 would be great, but we will definitely get 2^k - 1, for k >= 4, or else
+        // this test isn't covering what it wants to
+        let cap = tester.capacity();
+
+        // len is the length *after* removal
+        for len in 0..cap - 1 {
+            // 0, 1, 2, .., len - 1
+            let expected = (0..).take(len).collect::<FixedVecDeque<[usize; 16]>>();
+            for tail_pos in 0..cap {
+                for to_remove in 0..len + 1 {
+                    tester.ptr = tail_pos;
+                    tester.len = 0;
+
+                    for i in 0..len {
+                        if i == to_remove {
+                            *tester.push_back() = 1234;
+                        }
+                        *tester.push_back() = i;
+                    }
+                    if to_remove == len {
+                        *tester.push_back() = 1234;
+                    }
+                    tester.remove(to_remove);
+                    assert!(tester.tail() < tester.capacity());
+                    assert!(tester.ptr < tester.capacity());
+                    assert_eq!(tester, expected);
+                }
+            }
+        }
     }
 }
 
