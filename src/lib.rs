@@ -109,6 +109,7 @@ use std::mem;
 use std::ptr;
 use std::slice;
 use std::marker;
+use std::iter::FromIterator;
 
 /// A double-ended queue implemented with a fixed buffer.
 pub struct FixedVecDeque<T>
@@ -491,8 +492,34 @@ where
     pub fn iter<'a>(&'a self) -> Iter<'a, T> {
         Iter {
             data: self.data.ptr(),
-            start: T::wrap_sub(self.ptr, self.len),
-            end: self.ptr,
+            ptr: self.ptr,
+            len: self.len,
+            marker: marker::PhantomData,
+        }
+    }
+
+    /// Returns a front-to-back iterator that returns mutable references.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
+    /// *buf.push_back() = 5;
+    /// *buf.push_back() = 3;
+    /// *buf.push_back() = 4;
+    /// for num in buf.iter_mut() {
+    ///     *num = *num - 2;
+    /// }
+    /// let b: &[_] = &[&mut 3, &mut 1, &mut 2];
+    /// assert_eq!(&buf.iter_mut().collect::<Vec<&mut u32>>()[..], b);
+    /// ```
+    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
+        IterMut {
+            data: self.data.ptr_mut(),
+            ptr: self.ptr,
+            len: self.len,
             marker: marker::PhantomData,
         }
     }
@@ -628,10 +655,17 @@ where
     }
 }
 
+/// An iterator over the elements of a `FixedVecDeque`.
+///
+/// This `struct` is created by the [`iter`] method on [`FixedVecDeque`]. See its
+/// documentation for more.
+///
+/// [`iter`]: struct.FixedVecDeque.html#method.iter
+/// [`FixedVecDeque`]: struct.FixedVecDeque.html
 pub struct Iter<'a, T: 'a> where T: Array {
     data: *const T::Item,
-    start: usize,
-    end: usize,
+    ptr: usize,
+    len: usize,
     marker: marker::PhantomData<&'a ()>,
 }
 
@@ -641,13 +675,43 @@ impl<'a, T: 'a> Iterator for Iter<'a, T>
     type Item = &'a T::Item;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.start == self.end {
+        if self.len == 0 {
             return None;
         }
 
-        let item = self.start;
-        self.start = T::wrap_add(self.start, 1);
-        Some(unsafe { &* self.data.add(item) })
+        let ptr = T::wrap_sub(self.ptr, self.len);
+        self.len -= 1;
+        Some(unsafe { &* self.data.add(ptr) })
+    }
+}
+
+/// An iterator over the elements of a `FixedVecDeque`.
+///
+/// This `struct` is created by the [`iter`] method on [`FixedVecDeque`]. See its
+/// documentation for more.
+///
+/// [`iter`]: struct.FixedVecDeque.html#method.iter
+/// [`FixedVecDeque`]: struct.FixedVecDeque.html
+pub struct IterMut<'a, T: 'a> where T: Array {
+    data: *mut T::Item,
+    ptr: usize,
+    len: usize,
+    marker: marker::PhantomData<&'a ()>,
+}
+
+impl<'a, T: 'a> Iterator for IterMut<'a, T>
+    where T: Array
+{
+    type Item = &'a mut T::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.len == 0 {
+            return None;
+        }
+
+        let ptr = T::wrap_sub(self.ptr, self.len);
+        self.len -= 1;
+        Some(unsafe { &mut * self.data.add(ptr) })
     }
 }
 
@@ -657,6 +721,22 @@ impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T> where T: Array {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
+    }
+}
+
+impl<A> Extend<A::Item> for FixedVecDeque<A> where A: Array {
+    fn extend<T: IntoIterator<Item = A::Item>>(&mut self, iter: T) {
+        for elt in iter {
+            *self.push_back() = elt;
+        }
+    }
+}
+
+impl<A> FromIterator<A::Item> for FixedVecDeque<A> where A: Array {
+    fn from_iter<T: IntoIterator<Item = A::Item>>(iter: T) -> FixedVecDeque<A> {
+        let mut deq = FixedVecDeque::new();
+        deq.extend(iter.into_iter());
+        deq
     }
 }
 
@@ -872,6 +952,25 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_extend() {
+        let mut deq = FixedVecDeque::<[u32; 4]>::new();
+        deq.extend(vec![1, 2, 3, 4, 5, 6, 7, 8].into_iter());
+
+        assert!(!deq.is_empty());
+        assert!(deq.is_full());
+        assert_eq!(deq.iter().collect::<Vec<_>>(), vec![&5, &6, &7, &8]);
+    }
+
+    #[test]
+    fn test_collect() {
+        let deq: FixedVecDeque<[u32; 4]> = vec![1, 2, 3, 4, 5, 6, 7, 8].into_iter().collect();
+
+        assert!(!deq.is_empty());
+        assert!(deq.is_full());
+        assert_eq!(deq.iter().collect::<Vec<_>>(), vec![&5, &6, &7, &8]);
     }
 }
 
