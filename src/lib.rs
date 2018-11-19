@@ -106,6 +106,7 @@
 #![cfg_attr(feature = "unstable", feature(test))]
 
 use std::mem;
+use std::ops::{Index, IndexMut};
 use std::ptr;
 use std::slice;
 use std::marker;
@@ -616,6 +617,60 @@ where
         RingSlices::ring_slices(buf, head, tail)
     }
 
+    /// Retrieves an element in the `FixedVecDeque` by index.
+    ///
+    /// Element at index 0 is the front of the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate fixed_vec_deque;
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 5]>::new();
+    /// *buf.push_back() = 3;
+    /// *buf.push_back() = 4;
+    /// *buf.push_back() = 5;
+    /// assert_eq!(buf.get(1), Some(&4));
+    /// ```
+    pub fn get(&self, index: usize) -> Option<&T::Item> {
+        if index < self.len {
+            let off = T::wrap_add(T::wrap_sub(self.ptr, self.len), index);
+            Some(unsafe { self.buffer(off) })
+        } else {
+            None
+        }
+    }
+
+    /// Retrieves an element in the `FixedVecDeque` mutably by index.
+    ///
+    /// Element at index 0 is the front of the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate fixed_vec_deque;
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 5]>::new();
+    /// *buf.push_back() = 3;
+    /// *buf.push_back() = 4;
+    /// *buf.push_back() = 5;
+    /// if let Some(elem) = buf.get_mut(1) {
+    ///     *elem = 7;
+    /// }
+    ///
+    /// assert_eq!(buf[1], 7);
+    /// ```
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T::Item> {
+        if index < self.len {
+            let off = T::wrap_add(T::wrap_sub(self.ptr, self.len), index);
+            Some(unsafe { self.buffer_mut(off) })
+        } else {
+            None
+        }
+    }
+
     /// Turn ptr into a slice
     #[inline]
     unsafe fn buffer_as_slice(&self) -> &[T::Item] {
@@ -652,6 +707,20 @@ where
 
             data
         }
+    }
+}
+
+impl<T> Index<usize> for FixedVecDeque<T> where T: Array {
+    type Output = T::Item;
+
+    fn index(&self, index: usize) -> &T::Item {
+        self.get(index).expect("Out of bounds access")
+    }
+}
+
+impl<T> IndexMut<usize> for FixedVecDeque<T> where T: Array {
+    fn index_mut(&mut self, index: usize) -> &mut T::Item {
+        self.get_mut(index).expect("Out of bounds access")
     }
 }
 
@@ -877,24 +946,36 @@ mod tests {
 
                 assert_eq!(buf.back(), None);
                 assert_eq!(buf.front(), None);
+                assert_eq!(buf.get(0), None);
+                assert_eq!(buf.get_mut(0), None);
 
                 for i in 1..($size + 1) {
                     *buf.push_back() = i;
 
                     assert_eq!(buf.front(), Some(&1));
                     assert_eq!(buf.back(), Some(&i));
+                    assert_eq!(buf.get(0), Some(&1));
+                    assert_eq!(buf.get(buf.len() - 1), Some(&i));
+                    assert_eq!(buf[0], 1);
+                    assert_eq!(buf[buf.len() - 1], i);
                 }
 
                 let mut buf = FixedVecDeque::<[u32; $size]>::new();
 
                 assert_eq!(buf.back(), None);
                 assert_eq!(buf.front(), None);
+                assert_eq!(buf.get(0), None);
+                assert_eq!(buf.get_mut(0), None);
 
                 for i in 1..($size + 1) {
                     *buf.push_front() = i;
 
                     assert_eq!(buf.back(), Some(&1));
                     assert_eq!(buf.front(), Some(&i));
+                    assert_eq!(buf.get(buf.len() - 1), Some(&1));
+                    assert_eq!(buf.get(0), Some(&i));
+                    assert_eq!(buf[buf.len() - 1], 1);
+                    assert_eq!(buf[0], i);
                 }
             };
         }
