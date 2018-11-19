@@ -127,6 +127,20 @@ where
     data: T,
 }
 
+impl<T> Clone for FixedVecDeque<T> where T: Array {
+    fn clone(&self) -> Self {
+        FixedVecDeque {
+            ptr: self.ptr,
+            len: self.len,
+            data: unsafe {
+                let mut data: T = mem::uninitialized();
+                ptr::copy_nonoverlapping(self.data.ptr(), data.ptr_mut(), T::size());
+                data
+            },
+        }
+    }
+}
+
 impl<T> FixedVecDeque<T>
 where
     T: Array,
@@ -1241,6 +1255,13 @@ mod tests {
         assert!(!deq.is_empty());
         assert!(deq.is_full());
         assert_eq!(deq.iter().collect::<Vec<_>>(), vec![&5, &6, &7, &8]);
+    }
+
+    #[test]
+    fn test_clone() {
+        let a: FixedVecDeque<[u32; 4]> = vec![1, 2, 3, 4].into_iter().collect();
+        let b = a.clone();
+        assert_eq!(a, b);
     }
 }
 
