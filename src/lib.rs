@@ -105,12 +105,13 @@
 
 #![cfg_attr(feature = "unstable", feature(test))]
 
+use std::fmt;
+use std::iter::FromIterator;
+use std::marker;
 use std::mem;
 use std::ops::{Index, IndexMut};
 use std::ptr;
 use std::slice;
-use std::marker;
-use std::iter::FromIterator;
 
 /// A double-ended queue implemented with a fixed buffer.
 pub struct FixedVecDeque<T>
@@ -635,7 +636,7 @@ where
     /// ```
     pub fn get(&self, index: usize) -> Option<&T::Item> {
         if index < self.len {
-            let off = T::wrap_add(T::wrap_sub(self.ptr, self.len), index);
+            let off = self.ptr_index(index);
             Some(unsafe { self.buffer(off) })
         } else {
             None
@@ -669,6 +670,46 @@ where
         } else {
             None
         }
+    }
+
+    /// Swaps elements at indices `i` and `j`.
+    ///
+    /// `i` and `j` may be equal.
+    ///
+    /// Element at index 0 is the front of the queue.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either index is out of bounds.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # extern crate fixed_vec_deque;
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
+    /// *buf.push_back() = 3;
+    /// *buf.push_back() = 4;
+    /// *buf.push_back() = 5;
+    /// assert_eq!(buf, [3, 4, 5]);
+    /// buf.swap(0, 2);
+    /// assert_eq!(buf, [5, 4, 3]);
+    /// ```
+    pub fn swap(&mut self, i: usize, j: usize) {
+        assert!(i < T::size());
+        assert!(j < T::size());
+        let ri = self.ptr_index(i);
+        let rj = self.ptr_index(j);
+        let d = self.data.ptr_mut();
+        unsafe { ptr::swap(d.add(ri), d.add(rj)) }
+    }
+
+    /// Turn `i`, which is a zero-based offset into a ptr index that wraps around the size of this
+    /// container.
+    #[inline]
+    fn ptr_index(&self, i: usize) -> usize {
+        T::wrap_add(T::wrap_sub(self.ptr, self.len), i)
     }
 
     /// Turn ptr into a slice
@@ -710,7 +751,10 @@ where
     }
 }
 
-impl<T> Index<usize> for FixedVecDeque<T> where T: Array {
+impl<T> Index<usize> for FixedVecDeque<T>
+where
+    T: Array,
+{
     type Output = T::Item;
 
     fn index(&self, index: usize) -> &T::Item {
@@ -718,7 +762,10 @@ impl<T> Index<usize> for FixedVecDeque<T> where T: Array {
     }
 }
 
-impl<T> IndexMut<usize> for FixedVecDeque<T> where T: Array {
+impl<T> IndexMut<usize> for FixedVecDeque<T>
+where
+    T: Array,
+{
     fn index_mut(&mut self, index: usize) -> &mut T::Item {
         self.get_mut(index).expect("Out of bounds access")
     }
@@ -731,7 +778,10 @@ impl<T> IndexMut<usize> for FixedVecDeque<T> where T: Array {
 ///
 /// [`iter`]: struct.FixedVecDeque.html#method.iter
 /// [`FixedVecDeque`]: struct.FixedVecDeque.html
-pub struct Iter<'a, T: 'a> where T: Array {
+pub struct Iter<'a, T: 'a>
+where
+    T: Array,
+{
     data: *const T::Item,
     ptr: usize,
     len: usize,
@@ -739,7 +789,8 @@ pub struct Iter<'a, T: 'a> where T: Array {
 }
 
 impl<'a, T: 'a> Iterator for Iter<'a, T>
-    where T: Array
+where
+    T: Array,
 {
     type Item = &'a T::Item;
 
@@ -750,7 +801,7 @@ impl<'a, T: 'a> Iterator for Iter<'a, T>
 
         let ptr = T::wrap_sub(self.ptr, self.len);
         self.len -= 1;
-        Some(unsafe { &* self.data.add(ptr) })
+        Some(unsafe { &*self.data.add(ptr) })
     }
 }
 
@@ -761,7 +812,10 @@ impl<'a, T: 'a> Iterator for Iter<'a, T>
 ///
 /// [`iter`]: struct.FixedVecDeque.html#method.iter
 /// [`FixedVecDeque`]: struct.FixedVecDeque.html
-pub struct IterMut<'a, T: 'a> where T: Array {
+pub struct IterMut<'a, T: 'a>
+where
+    T: Array,
+{
     data: *mut T::Item,
     ptr: usize,
     len: usize,
@@ -769,7 +823,8 @@ pub struct IterMut<'a, T: 'a> where T: Array {
 }
 
 impl<'a, T: 'a> Iterator for IterMut<'a, T>
-    where T: Array
+where
+    T: Array,
 {
     type Item = &'a mut T::Item;
 
@@ -780,11 +835,14 @@ impl<'a, T: 'a> Iterator for IterMut<'a, T>
 
         let ptr = T::wrap_sub(self.ptr, self.len);
         self.len -= 1;
-        Some(unsafe { &mut * self.data.add(ptr) })
+        Some(unsafe { &mut *self.data.add(ptr) })
     }
 }
 
-impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T> where T: Array {
+impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T>
+where
+    T: Array,
+{
     type Item = &'a T::Item;
     type IntoIter = Iter<'a, T>;
 
@@ -793,7 +851,10 @@ impl<'a, T: 'a> IntoIterator for &'a FixedVecDeque<T> where T: Array {
     }
 }
 
-impl<A> Extend<A::Item> for FixedVecDeque<A> where A: Array {
+impl<A> Extend<A::Item> for FixedVecDeque<A>
+where
+    A: Array,
+{
     fn extend<T: IntoIterator<Item = A::Item>>(&mut self, iter: T) {
         for elt in iter {
             *self.push_back() = elt;
@@ -801,7 +862,20 @@ impl<A> Extend<A::Item> for FixedVecDeque<A> where A: Array {
     }
 }
 
-impl<A> FromIterator<A::Item> for FixedVecDeque<A> where A: Array {
+impl<T> fmt::Debug for FixedVecDeque<T>
+where
+    T: Array,
+    T::Item: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_list().entries(self).finish()
+    }
+}
+
+impl<A> FromIterator<A::Item> for FixedVecDeque<A>
+where
+    A: Array,
+{
     fn from_iter<T: IntoIterator<Item = A::Item>>(iter: T) -> FixedVecDeque<A> {
         let mut deq = FixedVecDeque::new();
         deq.extend(iter.into_iter());
@@ -851,6 +925,99 @@ macro_rules! impl_array(
         )+
     }
 );
+
+impl<A> Eq for FixedVecDeque<A>
+where
+    A: Array,
+    A::Item: Eq,
+{
+}
+
+impl<A, B> PartialEq<FixedVecDeque<B>> for FixedVecDeque<A>
+where
+    A: Array,
+    B: Array,
+    A::Item: PartialEq<B::Item>,
+{
+    fn eq(&self, other: &FixedVecDeque<B>) -> bool {
+        if self.len() != other.len() {
+            return false;
+        }
+        let (sa, sb) = self.as_slices();
+        let (oa, ob) = other.as_slices();
+        if sa.len() == oa.len() {
+            sa == oa && sb == ob
+        } else if sa.len() < oa.len() {
+            // Always divisible in three sections, for example:
+            // self:  [a b c|d e f]
+            // other: [0 1 2 3|4 5]
+            // front = 3, mid = 1,
+            // [a b c] == [0 1 2] && [d] == [3] && [e f] == [4 5]
+            let front = sa.len();
+            let mid = oa.len() - front;
+
+            let (oa_front, oa_mid) = oa.split_at(front);
+            let (sb_mid, sb_back) = sb.split_at(mid);
+            debug_assert_eq!(sa.len(), oa_front.len());
+            debug_assert_eq!(sb_mid.len(), oa_mid.len());
+            debug_assert_eq!(sb_back.len(), ob.len());
+            sa == oa_front && sb_mid == oa_mid && sb_back == ob
+        } else {
+            let front = oa.len();
+            let mid = sa.len() - front;
+
+            let (sa_front, sa_mid) = sa.split_at(front);
+            let (ob_mid, ob_back) = ob.split_at(mid);
+            debug_assert_eq!(sa_front.len(), oa.len());
+            debug_assert_eq!(sa_mid.len(), ob_mid.len());
+            debug_assert_eq!(sb.len(), ob_back.len());
+            sa_front == oa && sa_mid == ob_mid && sb == ob_back
+        }
+    }
+}
+
+macro_rules! __impl_slice_eq1 {
+    ($Lhs: ty, $Rhs: ty) => {
+        __impl_slice_eq1! { $Lhs, $Rhs, Sized }
+    };
+    ($Lhs: ty, $Rhs: ty, $Bound: ident) => {
+        impl<'a, 'b, A, B> PartialEq<$Rhs> for $Lhs
+        where
+            A: Array,
+            A::Item: $Bound + PartialEq<B>
+        {
+            fn eq(&self, other: &$Rhs) -> bool {
+                if self.len() != other.len() {
+                    return false;
+                }
+                let (sa, sb) = self.as_slices();
+                let (oa, ob) = other[..].split_at(sa.len());
+                sa == oa && sb == ob
+            }
+        }
+    }
+}
+
+__impl_slice_eq1! { FixedVecDeque<A>, Vec<B> }
+__impl_slice_eq1! { FixedVecDeque<A>, &'b [B] }
+__impl_slice_eq1! { FixedVecDeque<A>, &'b mut [B] }
+
+macro_rules! array_impls {
+    ($($N: expr)+) => {
+        $(
+            __impl_slice_eq1! { FixedVecDeque<A>, [B; $N] }
+            __impl_slice_eq1! { FixedVecDeque<A>, &'b [B; $N] }
+            __impl_slice_eq1! { FixedVecDeque<A>, &'b mut [B; $N] }
+        )+
+    }
+}
+
+array_impls! {
+     0  1  2  3  4  5  6  7  8  9
+    10 11 12 13 14 15 16 17 18 19
+    20 21 22 23 24 25 26 27 28 29
+    30 31 32
+}
 
 impl_array!(
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20, 24, 32, 36, 0x40, 0x80, 0x100,
@@ -1100,9 +1267,7 @@ mod benches {
         fn default() -> Self {
             let fields = [0u64; 64];
 
-            BigStruct {
-                fields,
-            }
+            BigStruct { fields }
         }
     }
 }
