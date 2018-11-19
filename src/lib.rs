@@ -127,7 +127,10 @@ where
     data: T,
 }
 
-impl<T> Clone for FixedVecDeque<T> where T: Array {
+impl<T> Clone for FixedVecDeque<T>
+where
+    T: Array,
+{
     fn clone(&self) -> Self {
         FixedVecDeque {
             ptr: self.ptr,
@@ -215,6 +218,21 @@ where
         self.len
     }
 
+    /// Returns the number of elements the `FixedVecDeque` can hold.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let buf = FixedVecDeque::<[u32; 16]>::new();
+    /// assert_eq!(buf.capacity(), 16);
+    /// ```
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        T::size()
+    }
+
     /// Provides a reference to the front element, or `None` if the `FixedVecDeque` is
     /// empty.
     ///
@@ -245,7 +263,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut d = FixedVecDeque::<[u32; 2]>::new();
@@ -278,7 +295,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut d = FixedVecDeque::<[u32; 2]>::new();
@@ -304,7 +320,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut d = FixedVecDeque::<[u32; 2]>::new();
@@ -334,7 +349,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut d = FixedVecDeque::<[u32; 3]>::new();
@@ -377,25 +391,24 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut d = FixedVecDeque::<[u32; 2]>::new();
     /// *d.push_back() = 1;
     /// *d.push_back() = 2;
     ///
-    /// assert_eq!(d.pop_front(), Some(&1));
-    /// assert_eq!(d.pop_front(), Some(&2));
+    /// assert_eq!(d.pop_front(), Some(&mut 1));
+    /// assert_eq!(d.pop_front(), Some(&mut 2));
     /// assert_eq!(d.pop_front(), None);
     /// ```
-    pub fn pop_front(&mut self) -> Option<&T::Item> {
+    pub fn pop_front(&mut self) -> Option<&mut T::Item> {
         if self.is_empty() {
             return None;
         }
 
         let tail = T::wrap_sub(self.ptr, self.len);
         self.len -= 1;
-        unsafe { Some(self.buffer(tail)) }
+        unsafe { Some(self.buffer_mut(tail)) }
     }
 
     /// Appends an element to the back of the `FixedVecDeque` by returning a mutable reference that
@@ -406,7 +419,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut buf = FixedVecDeque::<[u32; 2]>::new();
@@ -430,7 +442,6 @@ where
     /// ```
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut buf = FixedVecDeque::<[u32; 1]>::new();
@@ -470,23 +481,91 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut buf = FixedVecDeque::<[u32; 2]>::new();
     /// assert_eq!(buf.pop_back(), None);
     /// *buf.push_back() = 1;
     /// *buf.push_back() = 3;
-    /// assert_eq!(buf.pop_back(), Some(&3));
+    /// assert_eq!(buf.pop_back(), Some(&mut 3));
     /// ```
-    pub fn pop_back(&mut self) -> Option<&T::Item> {
+    pub fn pop_back(&mut self) -> Option<&mut T::Item> {
         if self.is_empty() {
             return None;
         }
 
         self.ptr = T::wrap_sub(self.ptr, 1);
         self.len -= 1;
-        unsafe { Some(self.buffer(self.ptr)) }
+        let ptr = self.ptr;
+        unsafe { Some(self.buffer_mut(ptr)) }
+    }
+
+    /// Removes an element from anywhere in the `FixedVecDeque` and returns a mutable reference to
+    /// it, replacing it with the last element.
+    ///
+    /// This does not preserve ordering, but is O(1).
+    ///
+    /// Returns `None` if `index` is out of bounds.
+    ///
+    /// Element at index 0 is the front of the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
+    /// assert_eq!(buf.swap_remove_back(0), None);
+    /// *buf.push_back() = 1;
+    /// *buf.push_back() = 2;
+    /// *buf.push_back() = 3;
+    /// assert_eq!(buf, [1, 2, 3]);
+    ///
+    /// assert_eq!(buf.swap_remove_back(0), Some(&mut 1));
+    /// assert_eq!(buf, [3, 2]);
+    /// ```
+    pub fn swap_remove_back(&mut self, index: usize) -> Option<&mut T::Item> {
+        let length = self.len();
+        if length > 0 && index < length - 1 {
+            self.swap(index, length - 1);
+        } else if index >= length {
+            return None;
+        }
+        self.pop_back()
+    }
+
+    /// Removes an element from anywhere in the `FixedVecDeque` and returns a reference to it,
+    /// replacing it with the first element.
+    ///
+    /// This does not preserve ordering, but is O(1).
+    ///
+    /// Returns `None` if `index` is out of bounds.
+    ///
+    /// Element at index 0 is the front of the queue.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
+    /// assert_eq!(buf.swap_remove_front(0), None);
+    /// *buf.push_back() = 1;
+    /// *buf.push_back() = 2;
+    /// *buf.push_back() = 3;
+    /// assert_eq!(buf, [1, 2, 3]);
+    ///
+    /// assert_eq!(buf.swap_remove_front(2), Some(&mut 3));
+    /// assert_eq!(buf, [2, 1]);
+    /// ```
+    pub fn swap_remove_front(&mut self, index: usize) -> Option<&mut T::Item> {
+        let length = self.len();
+        if length > 0 && index < length && index != 0 {
+            self.swap(index, 0);
+        } else if index >= length {
+            return None;
+        }
+        self.pop_front()
     }
 
     /// Returns a front-to-back iterator.
@@ -494,7 +573,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
@@ -548,7 +626,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut v = FixedVecDeque::<[u32; 1]>::new();
@@ -567,7 +644,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut vector = FixedVecDeque::<[u32; 6]>::new();
@@ -603,7 +679,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut vector = FixedVecDeque::<[u32; 5]>::new();
@@ -640,7 +715,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut buf = FixedVecDeque::<[u32; 5]>::new();
@@ -665,7 +739,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut buf = FixedVecDeque::<[u32; 5]>::new();
@@ -700,7 +773,6 @@ where
     /// # Examples
     ///
     /// ```
-    /// # extern crate fixed_vec_deque;
     /// use fixed_vec_deque::FixedVecDeque;
     ///
     /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
@@ -1134,8 +1206,8 @@ mod tests {
         fixed.push_back().data = 1;
         fixed.push_back().data = 2;
 
-        assert_eq!(Some(&Foo { data: 1 }), fixed.pop_front());
-        assert_eq!(Some(&Foo { data: 2 }), fixed.pop_front());
+        assert_eq!(Some(&mut Foo { data: 1 }), fixed.pop_front());
+        assert_eq!(Some(&mut Foo { data: 2 }), fixed.pop_front());
         assert_eq!(None, fixed.pop_front());
     }
 
@@ -1262,6 +1334,47 @@ mod tests {
         let a: FixedVecDeque<[u32; 4]> = vec![1, 2, 3, 4].into_iter().collect();
         let b = a.clone();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_swap_front_back_remove() {
+        fn test(back: bool) {
+            let mut tester = FixedVecDeque::<[usize; 16]>::new();
+            let usable_cap = tester.capacity();
+            let final_len = usable_cap / 2;
+
+            for len in 0..final_len {
+                let expected: FixedVecDeque<[usize; 16]> = if back {
+                    (0..len).collect()
+                } else {
+                    (0..len).rev().collect()
+                };
+                for tail_pos in 0..usable_cap {
+                    tester.ptr = tail_pos;
+                    tester.len = 0;
+
+                    if back {
+                        for i in 0..len * 2 {
+                            *tester.push_front() = i;
+                        }
+                        for i in 0..len {
+                            assert_eq!(tester.swap_remove_back(i), Some(&mut (len * 2 - 1 - i)));
+                        }
+                    } else {
+                        for i in 0..len * 2 {
+                            *tester.push_back() = i;
+                        }
+                        for i in 0..len {
+                            let idx = tester.len() - 1 - i;
+                            assert_eq!(tester.swap_remove_front(idx), Some(&mut (len * 2 - 1 - i)));
+                        }
+                    }
+                    assert_eq!(tester, expected);
+                }
+            }
+        }
+        test(true);
+        test(false);
     }
 }
 
