@@ -1,5 +1,7 @@
 # fixed-vec-deque
 
+**Note:** this crate is still in heavy development. Please be careful!
+
 This crate provides a fixed-size VecDeque implementation (a.k.a. a fixed-size ring buffer) that
 only provides referential access to what it is storing.
 
@@ -10,6 +12,11 @@ For information on how to use it, see the [Documentation].
 
 [VecDeque]: https://doc.rust-lang.org/std/collections/struct.VecDeque.html
 [documentation]: https://docs.rs/fixed-vec-deque
+
+## Missing APIs
+
+[Some APIs are missing](https://github.com/udoprog/fixed-vec-deque/issues/2).
+If you want to help out, leave a comment in the issue!
 
 ## LICENSE
 
