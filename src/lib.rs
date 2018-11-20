@@ -782,6 +782,43 @@ where
         }
     }
 
+    /// Retains only the elements specified by the predicate.
+    ///
+    /// In other words, remove all elements `e` such that `f(&e)` returns false.
+    /// This method operates in place and preserves the order of the retained
+    /// elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[usize; 8]>::new();
+    /// buf.extend(1..5);
+    /// buf.retain(|&x| x % 2 == 0);
+    /// assert_eq!(buf, [2, 4]);
+    /// ```
+    pub fn retain<F>(&mut self, mut f: F)
+        where F: FnMut(&T::Item) -> bool
+    {
+        let len = self.len();
+        let mut del = 0;
+
+        for i in 0..len {
+            let off = self.ptr_index(i);
+
+            if !f(unsafe { self.buffer(off) }) {
+                del += 1;
+            } else if del > 0 {
+                self.swap(i - del, i);
+            }
+        }
+
+        if del > 0 {
+            self.truncate(len - del);
+        }
+    }
+
     /// Returns a front-to-back iterator.
     ///
     /// # Examples
