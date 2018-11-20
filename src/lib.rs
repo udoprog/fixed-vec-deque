@@ -105,6 +105,10 @@
 
 #![cfg_attr(feature = "unstable", feature(test))]
 
+/// Code extensively based on Rust stdlib:
+/// https://github.com/rust-lang/rust/blob/e8aef7cae14bc7a56859408c90253e9bcc07fcff/src/liballoc/collections/vec_deque.rs
+/// And rust-smallvec:
+/// https://github.com/servo/rust-smallvec
 use std::cmp;
 use std::fmt;
 use std::hash;
