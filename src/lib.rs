@@ -125,7 +125,7 @@ where
     T: Array,
 {
     // where we are currently writing.
-    ptr: usize,
+    head: usize,
     // how many valid elements we have in the queue.
     len: usize,
     // underlying array.
@@ -138,7 +138,7 @@ where
 {
     fn clone(&self) -> Self {
         FixedVecDeque {
-            ptr: self.ptr,
+            head: self.head,
             len: self.len,
             data: unsafe {
                 let mut data: T = mem::uninitialized();
@@ -168,7 +168,7 @@ where
     /// ```
     pub fn new() -> Self {
         FixedVecDeque {
-            ptr: 0,
+            head: 0,
             len: 0,
             data: Self::data_from_default(),
         }
@@ -178,10 +178,10 @@ where
     fn data_from_default() -> T {
         unsafe {
             let mut data: T = mem::uninitialized();
-            let ptr = data.ptr_mut();
+            let m = data.ptr_mut();
 
             for o in 0..T::size() {
-                ptr::write(ptr.add(o), T::Item::default());
+                ptr::write(m.add(o), T::Item::default());
             }
 
             data
@@ -283,7 +283,7 @@ where
     /// ```
     pub fn truncate(&mut self, len: usize) {
         if len < self.len {
-            self.ptr = T::wrap_sub(self.ptr, self.len - len);
+            self.head = T::wrap_sub(self.head, self.len - len);
             self.len = len;
         }
     }
@@ -365,7 +365,7 @@ where
             return None;
         }
 
-        let back = T::wrap_sub(self.ptr, 1);
+        let back = T::wrap_sub(self.head, 1);
         Some(unsafe { self.buffer(back) })
     }
 
@@ -395,7 +395,7 @@ where
             return None;
         }
 
-        let back = T::wrap_sub(self.ptr, 1);
+        let back = T::wrap_sub(self.head, 1);
         Some(unsafe { self.buffer_mut(back) })
     }
 
@@ -430,8 +430,8 @@ where
     pub fn push_front(&mut self) -> &mut T::Item {
         // overwriting existing elements.
         if self.len == T::size() {
-            self.ptr = T::wrap_sub(self.ptr, 1);
-            let front = self.ptr;
+            self.head = T::wrap_sub(self.head, 1);
+            let front = self.head;
             return unsafe { self.buffer_mut(front) };
         }
 
@@ -520,8 +520,8 @@ where
     /// assert_eq!(buf.front(), None);
     /// ```
     pub fn push_back(&mut self) -> &mut T::Item {
-        let head = self.ptr;
-        self.ptr = T::wrap_add(self.ptr, 1);
+        let head = self.head;
+        self.head = T::wrap_add(self.head, 1);
 
         if self.len < T::size() {
             self.len += 1;
@@ -549,10 +549,10 @@ where
             return None;
         }
 
-        self.ptr = T::wrap_sub(self.ptr, 1);
+        self.head = T::wrap_sub(self.head, 1);
         self.len -= 1;
-        let ptr = self.ptr;
-        unsafe { Some(self.buffer_mut(ptr)) }
+        let head = self.head;
+        unsafe { Some(self.buffer_mut(head)) }
     }
 
     /// Removes an element from anywhere in the `FixedVecDeque` and returns a mutable reference to
@@ -672,7 +672,7 @@ where
         //      M - Indicates element was moved
 
         let idx = self.ptr_index(index);
-        let head = self.ptr;
+        let head = self.head;
         let tail = self.tail();
 
         let tmp = unsafe { self.buffer_read(idx) };
@@ -714,7 +714,7 @@ where
                     //                     M M
 
                     self.copy(idx, idx + 1, head - idx - 1);
-                    self.ptr -= 1;
+                    self.head -= 1;
                     head
                 }
             }
@@ -745,7 +745,7 @@ where
                     //               M M
 
                     self.copy(idx, idx + 1, head - idx - 1);
-                    self.ptr -= 1;
+                    self.head -= 1;
                     head
                 }
             }
@@ -781,7 +781,7 @@ where
                         self.copy(0, 1, head - 1);
                     }
 
-                    self.ptr = T::wrap_sub(self.ptr, 1);
+                    self.head = T::wrap_sub(self.head, 1);
                     head
                 }
             }
@@ -876,7 +876,7 @@ where
     pub fn iter<'a>(&'a self) -> Iter<'a, T> {
         Iter {
             data: self.data.ptr(),
-            ptr: self.ptr,
+            head: self.head,
             len: self.len,
             marker: marker::PhantomData,
         }
@@ -902,7 +902,7 @@ where
     pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
         IterMut {
             data: self.data.ptr_mut(),
-            ptr: self.ptr,
+            head: self.head,
             len: self.len,
             marker: marker::PhantomData,
         }
@@ -924,7 +924,7 @@ where
     /// ```
     #[inline]
     pub fn clear(&mut self) {
-        self.ptr = 0;
+        self.head = 0;
         self.len = 0;
     }
 
@@ -975,13 +975,13 @@ where
     #[inline]
     pub fn as_mut_slices(&mut self) -> (&mut [T::Item], &mut [T::Item]) {
         if self.is_full() {
-            let ptr = self.ptr;
+            let head = self.head;
             let buf = unsafe { self.buffer_as_mut_slice() };
-            let (left, right) = buf.split_at(ptr);
+            let (left, right) = buf.split_at(head);
             return (right, left);
         }
 
-        let head = self.ptr;
+        let head = self.head;
         let tail = self.tail();
         let buf = unsafe { self.buffer_as_mut_slice() };
         RingSlices::ring_slices(buf, head, tail)
@@ -1012,11 +1012,11 @@ where
         let buf = unsafe { self.buffer_as_slice() };
 
         if self.len == T::size() {
-            let (left, right) = buf.split_at(self.ptr);
+            let (left, right) = buf.split_at(self.head);
             return (right, left);
         }
 
-        let head = self.ptr;
+        let head = self.head;
         let tail = T::wrap_sub(head, self.len);
         RingSlices::ring_slices(buf, head, tail)
     }
@@ -1115,7 +1115,7 @@ where
     /// Get index of tail.
     #[inline]
     fn tail(&self) -> usize {
-        T::wrap_sub(self.ptr, self.len)
+        T::wrap_sub(self.head, self.len)
     }
 
     /// Turn ptr into a slice
@@ -1156,7 +1156,7 @@ where
 
     #[inline]
     fn is_contiguous(&self) -> bool {
-        self.len != T::size() && self.tail() <= self.ptr
+        self.len != T::size() && self.tail() <= self.head
     }
 
     /// Copies a contiguous block of memory len long from src to dst
@@ -1275,7 +1275,7 @@ where
     T: Array,
 {
     data: *const T::Item,
-    ptr: usize,
+    head: usize,
     len: usize,
     marker: marker::PhantomData<&'a ()>,
 }
@@ -1291,9 +1291,9 @@ where
             return None;
         }
 
-        let ptr = T::wrap_sub(self.ptr, self.len);
+        let tail = T::wrap_sub(self.head, self.len);
         self.len -= 1;
-        Some(unsafe { &*self.data.add(ptr) })
+        Some(unsafe { &*self.data.add(tail) })
     }
 }
 
@@ -1309,7 +1309,7 @@ where
     T: Array,
 {
     data: *mut T::Item,
-    ptr: usize,
+    head: usize,
     len: usize,
     marker: marker::PhantomData<&'a ()>,
 }
@@ -1325,9 +1325,9 @@ where
             return None;
         }
 
-        let ptr = T::wrap_sub(self.ptr, self.len);
+        let tail = T::wrap_sub(self.head, self.len);
         self.len -= 1;
-        Some(unsafe { &mut *self.data.add(ptr) })
+        Some(unsafe { &mut *self.data.add(tail) })
     }
 }
 
@@ -1757,7 +1757,7 @@ mod tests {
                     (0..len).rev().collect()
                 };
                 for tail_pos in 0..usable_cap {
-                    tester.ptr = tail_pos;
+                    tester.head = tail_pos;
                     tester.len = 0;
 
                     if back {
@@ -1822,7 +1822,7 @@ mod tests {
             let expected = (0..).take(len).collect::<FixedVecDeque<[usize; 16]>>();
             for tail_pos in 0..cap {
                 for to_remove in 0..len + 1 {
-                    tester.ptr = tail_pos;
+                    tester.head = tail_pos;
                     tester.len = 0;
 
                     for i in 0..len {
@@ -1836,7 +1836,7 @@ mod tests {
                     }
                     tester.remove(to_remove);
                     assert!(tester.tail() < tester.capacity());
-                    assert!(tester.ptr < tester.capacity());
+                    assert!(tester.head < tester.capacity());
                     assert_eq!(tester, expected);
                 }
             }
