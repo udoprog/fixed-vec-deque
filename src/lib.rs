@@ -233,6 +233,31 @@ where
         T::size()
     }
 
+    /// Shortens the `FixedVecDeque`, causing excess elements to be unused.
+    ///
+    /// If `len` is greater than the `FixedVecDeque`'s current length, this has no
+    /// effect.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 4]>::new();
+    /// *buf.push_back() = 5;
+    /// *buf.push_back() = 10;
+    /// *buf.push_back() = 15;
+    /// assert_eq!(buf, [5, 10, 15]);
+    /// buf.truncate(1);
+    /// assert_eq!(buf, [5]);
+    /// ```
+    pub fn truncate(&mut self, len: usize) {
+        if len < self.len {
+            self.ptr = T::wrap_sub(self.ptr, self.len - len);
+            self.len = len;
+        }
+    }
+
     /// Provides a reference to the front element, or `None` if the `FixedVecDeque` is
     /// empty.
     ///
