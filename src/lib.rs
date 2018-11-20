@@ -107,7 +107,7 @@
 
 use std::cmp;
 use std::fmt;
-use std::iter::FromIterator;
+use std::iter::{repeat, FromIterator};
 use std::marker;
 use std::mem;
 use std::ops::{Index, IndexMut};
@@ -147,13 +147,19 @@ where
 impl<T> FixedVecDeque<T>
 where
     T: Array,
+    T::Item: Default,
 {
-    /// Construct a new fixed ring buffer, pre-allocating all elements.
+    /// Construct a new fixed ring buffer, pre-allocating all elements through [`Default`].
     ///
     /// ## Examples
     ///
     /// ```rust
-    /// # extern crate fixed_vec_deque;
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut deq = FixedVecDeque::<[u32; 16]>::new();
+    /// assert_eq!(deq, []);
+    /// *deq.push_back() = 1;
+    /// assert_eq!(deq, [1]);
     /// ```
     pub fn new() -> Self {
         FixedVecDeque {
@@ -163,6 +169,25 @@ where
         }
     }
 
+    /// Initialize stored data using `Default::default()`
+    fn data_from_default() -> T {
+        unsafe {
+            let mut data: T = mem::uninitialized();
+            let ptr = data.ptr_mut();
+
+            for o in 0..T::size() {
+                ptr::write(ptr.add(o), T::Item::default());
+            }
+
+            data
+        }
+    }
+}
+
+impl<T> FixedVecDeque<T>
+where
+    T: Array,
+{
     /// Returns `true` if the `FixedVecDeque` is empty.
     ///
     /// # Examples
@@ -614,7 +639,10 @@ where
     /// assert_eq!(buf.remove(1), Some(&mut 2));
     /// assert_eq!(buf, [1, 3]);
     /// ```
-    pub fn remove(&mut self, index: usize) -> Option<&mut T::Item> where T::Item: fmt::Debug {
+    pub fn remove(&mut self, index: usize) -> Option<&mut T::Item>
+    where
+        T::Item: fmt::Debug,
+    {
         // if empty, nothing to do.
         if T::size() == 0 || index >= self.len {
             return None;
@@ -649,7 +677,11 @@ where
 
         let contiguous = self.is_contiguous();
 
-        let idx = match (contiguous, distance_to_tail <= distance_to_head, idx >= tail) {
+        let idx = match (
+            contiguous,
+            distance_to_tail <= distance_to_head,
+            idx >= tail,
+        ) {
             (true, true, _) => {
                 unsafe {
                     // contiguous, remove closer to tail:
@@ -799,7 +831,8 @@ where
     /// assert_eq!(buf, [2, 4]);
     /// ```
     pub fn retain<F>(&mut self, mut f: F)
-        where F: FnMut(&T::Item) -> bool
+    where
+        F: FnMut(&T::Item) -> bool,
     {
         let len = self.len();
         let mut del = 0;
@@ -907,7 +940,8 @@ where
     /// assert_eq!(vector.contains(&10), false);
     /// ```
     pub fn contains(&self, x: &T::Item) -> bool
-        where T::Item: PartialEq<T::Item>
+    where
+        T::Item: PartialEq<T::Item>,
     {
         let (a, b) = self.as_slices();
         a.contains(x) || b.contains(x)
@@ -1123,35 +1157,70 @@ where
     /// Copies a contiguous block of memory len long from src to dst
     #[inline]
     unsafe fn copy(&mut self, dst: usize, src: usize, len: usize) {
-        debug_assert!(dst + len <= T::size(),
-                      "cpy dst={} src={} len={} cap={}",
-                      dst,
-                      src,
-                      len,
-                      T::size());
+        debug_assert!(
+            dst + len <= T::size(),
+            "cpy dst={} src={} len={} cap={}",
+            dst,
+            src,
+            len,
+            T::size()
+        );
 
-        debug_assert!(src + len <= T::size(),
-                      "cpy dst={} src={} len={} cap={}",
-                      dst,
-                      src,
-                      len,
-                      T::size());
+        debug_assert!(
+            src + len <= T::size(),
+            "cpy dst={} src={} len={} cap={}",
+            dst,
+            src,
+            len,
+            T::size()
+        );
 
         let m = self.data.ptr_mut();
         ptr::copy(m.add(src), m.add(dst), len);
     }
+}
 
-    /// Initialize stored data using `Default::default()`
-    fn data_from_default() -> T {
-        unsafe {
-            let mut data: T = mem::uninitialized();
-            let ptr = data.ptr_mut();
+impl<T> FixedVecDeque<T>
+where
+    T: Array,
+    T::Item: Clone,
+{
+    /// Modifies the `FixedVecDeque` in-place so that `len()` is equal to new_len,
+    /// either by removing excess elements from the back or by appending clones of `value`
+    /// to the back.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `new_len` is longer than the [`capacity`] of this buffer.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut buf = FixedVecDeque::<[u32; 8]>::new();
+    /// *buf.push_back() = 5;
+    /// *buf.push_back() = 10;
+    /// *buf.push_back() = 15;
+    /// assert_eq!(buf, [5, 10, 15]);
+    ///
+    /// buf.resize(2, 0);
+    /// assert_eq!(buf, [5, 10]);
+    ///
+    /// buf.resize(5, 20);
+    /// assert_eq!(buf, [5, 10, 20, 20, 20]);
+    /// ```
+    ///
+    /// [`capacity`]: struct.FixedVecDeque.html#method.capacity
+    pub fn resize(&mut self, new_len: usize, value: T::Item) {
+        assert!(new_len < T::size(), "resize beyond capacity");
 
-            for o in 0..T::size() {
-                ptr::write(ptr.add(o), T::Item::default());
-            }
+        let len = self.len();
 
-            data
+        if new_len > len {
+            self.extend(repeat(value).take(new_len - len))
+        } else {
+            self.truncate(new_len);
         }
     }
 }
@@ -1280,6 +1349,7 @@ where
 impl<A> FromIterator<A::Item> for FixedVecDeque<A>
 where
     A: Array,
+    A::Item: Default,
 {
     fn from_iter<T: IntoIterator<Item = A::Item>>(iter: T) -> FixedVecDeque<A> {
         let mut deq = FixedVecDeque::new();
@@ -1291,7 +1361,7 @@ where
 /// Types that can be used as the backing store for a FixedVecDeque.
 pub unsafe trait Array {
     /// The type of the array's elements.
-    type Item: Default;
+    type Item;
     /// Returns the number of items the array can hold.
     fn size() -> usize;
     /// Returns a pointer to the first element of the array.
@@ -1497,7 +1567,8 @@ mod tests {
     /// Construct a new and verify that its size is the sum of all it's elements.
     fn test_new<T>() -> FixedVecDeque<T>
     where
-        T: Array + Default,
+        T: Array,
+        T::Item: Default,
     {
         let fixed = FixedVecDeque::<T>::new();
 
