@@ -107,6 +107,7 @@
 
 use std::cmp;
 use std::fmt;
+use std::hash;
 use std::iter::{repeat, FromIterator};
 use std::marker;
 use std::mem;
@@ -1222,6 +1223,19 @@ where
         } else {
             self.truncate(new_len);
         }
+    }
+}
+
+impl<A> hash::Hash for FixedVecDeque<A>
+where
+    A: Array,
+    A::Item: hash::Hash,
+{
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.len().hash(state);
+        let (a, b) = self.as_slices();
+        hash::Hash::hash_slice(a, state);
+        hash::Hash::hash_slice(b, state);
     }
 }
 
