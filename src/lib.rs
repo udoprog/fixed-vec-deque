@@ -890,6 +890,29 @@ where
         self.len = 0;
     }
 
+    /// Returns `true` if the `FixedVecDeque` contains an element equal to the
+    /// given value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut vector = FixedVecDeque::<[u32; 4]>::new();
+    ///
+    /// *vector.push_back() = 0;
+    /// *vector.push_back() = 1;
+    ///
+    /// assert_eq!(vector.contains(&1), true);
+    /// assert_eq!(vector.contains(&10), false);
+    /// ```
+    pub fn contains(&self, x: &T::Item) -> bool
+        where T::Item: PartialEq<T::Item>
+    {
+        let (a, b) = self.as_slices();
+        a.contains(x) || b.contains(x)
+    }
+
     /// Returns a pair of slices which contain, in order, the contents of the `FixedVecDeque`.
     ///
     /// # Examples
