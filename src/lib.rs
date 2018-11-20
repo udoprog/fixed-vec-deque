@@ -644,10 +644,7 @@ where
     /// assert_eq!(buf.remove(1), Some(&mut 2));
     /// assert_eq!(buf, [1, 3]);
     /// ```
-    pub fn remove(&mut self, index: usize) -> Option<&mut T::Item>
-    where
-        T::Item: fmt::Debug,
-    {
+    pub fn remove(&mut self, index: usize) -> Option<&mut T::Item> {
         // if empty, nothing to do.
         if T::size() == 0 || index >= self.len {
             return None;
