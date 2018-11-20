@@ -623,6 +623,94 @@ where
         self.pop_front()
     }
 
+    /// Inserts an element at `index` within the `FixedVecDeque`, shifting all elements with
+    /// indices greater than or equal to `index` towards the back.
+    ///
+    /// Element at index 0 is the front of the queue.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index` is greater than `FixedVecDeque`'s length
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut deq = FixedVecDeque::<[char; 4]>::new();
+    /// *deq.push_back() = 'a';
+    /// *deq.push_back() = 'b';
+    /// *deq.push_back() = 'c';
+    /// assert_eq!(deq, &['a', 'b', 'c']);
+    ///
+    /// *deq.insert(1) = 'd';
+    /// assert_eq!(deq, &['a', 'd', 'b', 'c']);
+    /// ```
+    ///
+    /// Insertion causes a shift around:
+    ///
+    /// ```
+    /// use fixed_vec_deque::FixedVecDeque;
+    ///
+    /// let mut deq = FixedVecDeque::<[char; 3]>::new();
+    /// *deq.push_back() = 'a';
+    /// *deq.push_back() = 'b';
+    /// *deq.push_back() = 'c';
+    /// assert_eq!(deq, &['a', 'b', 'c']);
+    ///
+    /// *deq.insert(1) = 'd';
+    /// assert_eq!(deq, &['a', 'd', 'b', 'c']);
+    /// ```
+    pub fn insert(&mut self, index: usize) -> &mut T::Item {
+        assert!(index <= self.len(), "index out of bounds");
+
+        if T::size() == 0 {
+            panic!("Cannot insert into empty queue");
+        }
+
+        let to_tail = index;
+        let to_head = self.len() - index;
+        let len = self.len;
+
+        match to_tail < to_head {
+            // shift towards tail
+            // increments head and increases length.
+            true => {
+                let head = self.head;
+                let tail = self.tail();
+                let idx = self.ptr_index(index);
+
+                // back up head
+                let h = unsafe { self.buffer_read(head) };
+
+                // continuous
+                if self.is_contiguous() {
+                    let head = T::wrap_sub(head, 1);
+                    let len = head - idx;
+
+                    unsafe {
+                        self.copy(idx, idx + 1, len);
+                    }
+
+                    panic!("we are continuous: {}", len);
+                } else {
+                    unsafe {
+                        // shift one from beginning to head.
+                        self.copy(1, 0, head);
+                        self.copy(0, len - 1, 1);
+                        println!("LEN: {}", tail);
+                        self.copy(tail + 1, tail, len - tail);
+                    }
+
+                    panic!("discontinuous");
+                }
+            }
+            false => panic!("not implemented"),
+        }
+
+        panic!("not implemented");
+    }
+
     /// Removes and returns the element at `index` from the `VecDeque`.
     /// Whichever end is closer to the removal point will be moved to make
     /// room, and all the affected elements will be moved to new positions.
@@ -1153,7 +1241,7 @@ where
 
     #[inline]
     fn is_contiguous(&self) -> bool {
-        self.len != T::size() && self.tail() <= self.head
+        self.head == 0 || self.len != T::size() && self.tail() <= self.head
     }
 
     /// Copies a contiguous block of memory len long from src to dst
@@ -1838,6 +1926,18 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_insert_case1() {
+        let mut deq = FixedVecDeque::<[char; 3]>::new();
+        *deq.push_back() = 'a';
+        *deq.push_back() = 'b';
+        *deq.push_back() = 'c';
+        assert_eq!(deq, &['a', 'b', 'c']);
+
+        *deq.insert(1) = 'd';
+        assert_eq!(deq, &['a', 'd', 'b', 'c']);
     }
 }
 
