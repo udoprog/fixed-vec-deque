@@ -135,6 +135,7 @@ where
 impl<T> Clone for FixedVecDeque<T>
 where
     T: Array,
+    T::Item: Clone,
 {
     fn clone(&self) -> Self {
         FixedVecDeque {
@@ -142,7 +143,12 @@ where
             len: self.len,
             data: unsafe {
                 let mut data: T = mem::uninitialized();
-                ptr::copy_nonoverlapping(self.data.ptr(), data.ptr_mut(), T::size());
+                let m = data.ptr_mut();
+
+                for o in 0..T::size() {
+                    ptr::write(m.add(o), self.buffer(o).clone());
+                }
+
                 data
             },
         }
@@ -1477,7 +1483,7 @@ macro_rules! __impl_slice_eq1 {
         impl<'a, 'b, A, B> PartialEq<$Rhs> for $Lhs
         where
             A: Array,
-            A::Item: $Bound + PartialEq<B>
+            A::Item: $Bound + PartialEq<B>,
         {
             fn eq(&self, other: &$Rhs) -> bool {
                 if self.len() != other.len() {
@@ -1488,7 +1494,7 @@ macro_rules! __impl_slice_eq1 {
                 sa == oa && sb == ob
             }
         }
-    }
+    };
 }
 
 __impl_slice_eq1! { FixedVecDeque<A>, Vec<B> }
