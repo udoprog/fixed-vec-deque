@@ -138,19 +138,17 @@ where
     T::Item: Clone,
 {
     fn clone(&self) -> Self {
+        let data = unsafe {
+            let mut data: T = mem::uninitialized();
+            slice::from_raw_parts_mut(data.ptr_mut(), T::size())
+                .clone_from_slice(self.buffer_as_slice());
+            data
+        };
+
         FixedVecDeque {
             head: self.head,
             len: self.len,
-            data: unsafe {
-                let mut data: T = mem::uninitialized();
-                let m = data.ptr_mut();
-
-                for o in 0..T::size() {
-                    ptr::write(m.add(o), self.buffer(o).clone());
-                }
-
-                data
-            },
+            data,
         }
     }
 }
