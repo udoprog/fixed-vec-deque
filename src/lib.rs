@@ -72,7 +72,7 @@
 //!     }
 //! }
 //!
-//! let mut deq = FixedVecDeque::<[BigStruct; 0x100]>::new();
+//! let mut deq = FixedVecDeque::<[BigStruct; 0x10]>::new();
 //!
 //! for i in 0..100 {
 //!     deq.push_back().fields[i] = i as u64;
@@ -139,10 +139,10 @@ where
 {
     fn clone(&self) -> Self {
         let data = unsafe {
-            let mut data: T = mem::uninitialized();
-            slice::from_raw_parts_mut(data.ptr_mut(), T::size())
+            let mut data: mem::MaybeUninit<T> = mem::MaybeUninit::uninit();
+            slice::from_raw_parts_mut((*data.as_mut_ptr()).ptr_mut(), T::size())
                 .clone_from_slice(self.buffer_as_slice());
-            data
+            data.assume_init()
         };
 
         FixedVecDeque {
@@ -181,14 +181,14 @@ where
     /// Initialize stored data using `Default::default()`
     fn data_from_default() -> T {
         unsafe {
-            let mut data: T = mem::uninitialized();
-            let m = data.ptr_mut();
+            let mut data: mem::MaybeUninit<T> = mem::MaybeUninit::uninit();
+            let m = (*data.as_mut_ptr()).ptr_mut();
 
             for o in 0..T::size() {
                 ptr::write(m.add(o), T::Item::default());
             }
 
-            data
+            data.assume_init()
         }
     }
 }
