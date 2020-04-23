@@ -405,6 +405,10 @@ where
 
     /// Prepends an element to the `FixedVecDeque`.
     ///
+    /// # Panics
+    ///
+    /// Calling this function will panic if the circular buffer is zero-sized.
+    ///
     /// # Examples
     ///
     /// ```
@@ -432,6 +436,8 @@ where
     /// assert_eq!(d.back(), Some(&2));
     /// ```
     pub fn push_front(&mut self) -> &mut T::Item {
+        assert!(T::size() > 0, "Cannot add to an empty deque");
+
         // overwriting existing elements.
         if self.len == T::size() {
             self.head = T::wrap_sub(self.head, 1);
@@ -474,6 +480,10 @@ where
     /// can be modified to it.
     ///
     /// Note: this might potentially remove elements from the head, unless they have been read.
+    ///
+    /// # Panics
+    ///
+    /// Calling this function will panic if the circular buffer is zero-sized.
     ///
     /// # Examples
     ///
@@ -524,6 +534,8 @@ where
     /// assert_eq!(buf.front(), None);
     /// ```
     pub fn push_back(&mut self) -> &mut T::Item {
+        assert!(T::size() > 0, "Cannot add to an empty deque");
+
         let head = self.head;
         self.head = T::wrap_add(self.head, 1);
 
