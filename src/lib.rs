@@ -904,7 +904,7 @@ where
     /// let c: Vec<&u32> = buf.iter().collect();
     /// assert_eq!(&c[..], b);
     /// ```
-    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+    pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             data: self.data.ptr(),
             head: self.head,
@@ -930,7 +930,7 @@ where
     /// let b: &[_] = &[&mut 3, &mut 1, &mut 2];
     /// assert_eq!(&buf.iter_mut().collect::<Vec<&mut u32>>()[..], b);
     /// ```
-    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             data: self.data.ptr_mut(),
             head: self.head,
@@ -1169,7 +1169,7 @@ where
 
     /// Takes a mutable reference of a value from the buffer.
     #[inline]
-    unsafe fn buffer_mut<'a>(&'a mut self, off: usize) -> &'a mut T::Item {
+    unsafe fn buffer_mut(&mut self, off: usize) -> &mut T::Item {
         &mut *self.data.ptr_mut().add(off)
     }
 
@@ -1258,6 +1258,17 @@ where
         } else {
             self.truncate(new_len);
         }
+    }
+}
+
+impl<T> Default for FixedVecDeque<T>
+where
+    T: Array,
+    T::Item: Default,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1408,13 +1419,20 @@ where
 }
 
 /// Types that can be used as the backing store for a FixedVecDeque.
+///
+/// # Safety
+///
+/// Implementor must ensure that the type is array appropriate.
 pub unsafe trait Array {
     /// The type of the array's elements.
     type Item;
+
     /// Returns the number of items the array can hold.
     fn size() -> usize;
+
     /// Returns a pointer to the first element of the array.
     fn ptr(&self) -> *const Self::Item;
+
     /// Returns a mutable pointer to the first element of the array.
     fn ptr_mut(&mut self) -> *mut Self::Item;
 
@@ -1467,42 +1485,46 @@ where
         if self.len() != other.len() {
             return false;
         }
+
         let (sa, sb) = self.as_slices();
         let (oa, ob) = other.as_slices();
-        if sa.len() == oa.len() {
-            sa == oa && sb == ob
-        } else if sa.len() < oa.len() {
-            // Always divisible in three sections, for example:
-            // self:  [a b c|d e f]
-            // other: [0 1 2 3|4 5]
-            // front = 3, mid = 1,
-            // [a b c] == [0 1 2] && [d] == [3] && [e f] == [4 5]
-            let front = sa.len();
-            let mid = oa.len() - front;
 
-            let (oa_front, oa_mid) = oa.split_at(front);
-            let (sb_mid, sb_back) = sb.split_at(mid);
-            debug_assert_eq!(sa.len(), oa_front.len());
-            debug_assert_eq!(sb_mid.len(), oa_mid.len());
-            debug_assert_eq!(sb_back.len(), ob.len());
-            sa == oa_front && sb_mid == oa_mid && sb_back == ob
-        } else {
-            let front = oa.len();
-            let mid = sa.len() - front;
+        match sa.len().cmp(&oa.len()) {
+            cmp::Ordering::Less => {
+                // Always divisible in three sections, for example:
+                // self:  [a b c|d e f]
+                // other: [0 1 2 3|4 5]
+                // front = 3, mid = 1,
+                // [a b c] == [0 1 2] && [d] == [3] && [e f] == [4 5]
+                let front = sa.len();
+                let mid = oa.len() - front;
 
-            let (sa_front, sa_mid) = sa.split_at(front);
-            let (ob_mid, ob_back) = ob.split_at(mid);
-            debug_assert_eq!(sa_front.len(), oa.len());
-            debug_assert_eq!(sa_mid.len(), ob_mid.len());
-            debug_assert_eq!(sb.len(), ob_back.len());
-            sa_front == oa && sa_mid == ob_mid && sb == ob_back
+                let (oa_front, oa_mid) = oa.split_at(front);
+                let (sb_mid, sb_back) = sb.split_at(mid);
+                debug_assert_eq!(sa.len(), oa_front.len());
+                debug_assert_eq!(sb_mid.len(), oa_mid.len());
+                debug_assert_eq!(sb_back.len(), ob.len());
+                sa == oa_front && sb_mid == oa_mid && sb_back == ob
+            }
+            cmp::Ordering::Equal => sa == oa && sb == ob,
+            cmp::Ordering::Greater => {
+                let front = oa.len();
+                let mid = sa.len() - front;
+
+                let (sa_front, sa_mid) = sa.split_at(front);
+                let (ob_mid, ob_back) = ob.split_at(mid);
+                debug_assert_eq!(sa_front.len(), oa.len());
+                debug_assert_eq!(sa_mid.len(), ob_mid.len());
+                debug_assert_eq!(sb.len(), ob_back.len());
+                sa_front == oa && sa_mid == ob_mid && sb == ob_back
+            }
         }
     }
 }
 
-macro_rules! __impl_slice_eq1 {
+macro_rules! impl_slice_eq {
     ($Lhs: ty, $Rhs: ty) => {
-        __impl_slice_eq1! { $Lhs, $Rhs, Sized }
+        impl_slice_eq! { $Lhs, $Rhs, Sized }
     };
     ($Lhs: ty, $Rhs: ty, $Bound: ident) => {
         impl<'a, 'b, A, B> PartialEq<$Rhs> for $Lhs
@@ -1522,16 +1544,16 @@ macro_rules! __impl_slice_eq1 {
     };
 }
 
-__impl_slice_eq1! { FixedVecDeque<A>, Vec<B> }
-__impl_slice_eq1! { FixedVecDeque<A>, &'b [B] }
-__impl_slice_eq1! { FixedVecDeque<A>, &'b mut [B] }
+impl_slice_eq! { FixedVecDeque<A>, Vec<B> }
+impl_slice_eq! { FixedVecDeque<A>, &'b [B] }
+impl_slice_eq! { FixedVecDeque<A>, &'b mut [B] }
 
 macro_rules! array_impls {
     ($($N: expr)+) => {
         $(
-            __impl_slice_eq1! { FixedVecDeque<A>, [B; $N] }
-            __impl_slice_eq1! { FixedVecDeque<A>, &'b [B; $N] }
-            __impl_slice_eq1! { FixedVecDeque<A>, &'b mut [B; $N] }
+            impl_slice_eq! { FixedVecDeque<A>, [B; $N] }
+            impl_slice_eq! { FixedVecDeque<A>, &'b [B; $N] }
+            impl_slice_eq! { FixedVecDeque<A>, &'b mut [B; $N] }
         )+
     }
 }
@@ -1652,6 +1674,7 @@ mod tests {
     // make sure that we correctly ported the various functions, since they depended on sizes being
     // aligned to a power of two.
     #[test]
+    #[allow(clippy::reversed_empty_ranges)]
     fn test_unaligned_sizes() {
         macro_rules! test_size {
             ($size:expr) => {
