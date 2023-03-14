@@ -9,11 +9,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ["1.36", stable]
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
-    - run: cargo test --workspace --all-targets
-    - run: cargo test --workspace --doc
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{rust.version}}
+    - run: cargo test --all-targets
+    - run: cargo test --doc
 
   clippy:
     runs-on: ubuntu-latest
@@ -22,7 +28,7 @@ jobs:
     - uses: dtolnay/rust-toolchain@1.68
       with:
         components: clippy
-    - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+    - run: cargo clippy --all-features --all-targets -- -D warnings
 
   rustfmt:
     runs-on: ubuntu-latest
