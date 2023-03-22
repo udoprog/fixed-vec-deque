@@ -1,6 +1,6 @@
 [package]
 name = "fixed-vec-deque"
-version = "0.1.11"
+version = "0.1.12"
 authors = ["John-John Tedro <udoprog@tedro.se>"]
 rust-version = "1.56"
 description = "A fixed-size, zero-allocation circular buffer for Rust."
