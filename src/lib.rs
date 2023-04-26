@@ -117,6 +117,8 @@
 //! [`pop_back`]: https://docs.rs/fixed-vec-deque/latest/fixed_vec_deque/struct.FixedVecDeque.html#method.pop_back
 //! [`pop_front`]: https://docs.rs/fixed-vec-deque/latest/fixed_vec_deque/struct.FixedVecDeque.html#method.pop_front
 
+#![cfg_attr(nightly, feature(test))]
+
 /// Code extensively based on Rust stdlib:
 /// https://github.com/rust-lang/rust/blob/e8aef7cae14bc7a56859408c90253e9bcc07fcff/src/liballoc/collections/vec_deque.rs
 /// And rust-smallvec:
@@ -127,8 +129,6 @@ use std::hash;
 use std::iter::{repeat, FromIterator};
 use std::marker;
 use std::mem;
-
-
 use std::ops::{Index, IndexMut};
 use std::ptr;
 use std::slice;

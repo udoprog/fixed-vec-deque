@@ -11,6 +11,7 @@ repository = "https://github.com/udoprog/fixed-vec-deque"
 license = "MIT/Apache-2.0"
 keywords = ["data-structures"]
 categories = ["data-structures"]
+edition = "2021"
 
 [features]
 unstable = []
