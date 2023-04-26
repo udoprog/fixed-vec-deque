@@ -1454,18 +1454,43 @@ pub unsafe trait Array {
     }
 }
 
-macro_rules! impl_array(
-    ($($size:expr),+) => {
-        $(
-            unsafe impl<T> Array for [T; $size] where T: Default {
-                type Item = T;
-                fn size() -> usize { $size }
-                fn ptr(&self) -> *const T { self.as_ptr() }
-                fn ptr_mut(&mut self) -> *mut T { self.as_mut_ptr() }
-            }
-        )+
+unsafe impl<const N: usize, T> Array for [T; N] {
+    type Item = T;
+
+    #[inline]
+    fn size() -> usize {
+        N
     }
-);
+
+    #[inline]
+    fn ptr(&self) -> *const Self::Item {
+        self.as_ptr()
+    }
+
+    #[inline]
+    fn ptr_mut(&mut self) -> *mut Self::Item {
+        self.as_mut_ptr()
+    }
+}
+
+unsafe impl<const N: usize, T> Array for &mut [T; N] {
+    type Item = T;
+
+    #[inline]
+    fn size() -> usize {
+        N
+    }
+
+    #[inline]
+    fn ptr(&self) -> *const Self::Item {
+        self.as_ptr()
+    }
+
+    #[inline]
+    fn ptr_mut(&mut self) -> *mut Self::Item {
+        self.as_mut_ptr()
+    }
+}
 
 impl<A> Eq for FixedVecDeque<A>
 where
@@ -1522,46 +1547,35 @@ where
 }
 
 macro_rules! impl_slice_eq {
-    ($Lhs: ty, $Rhs: ty) => {
-        impl_slice_eq! { $Lhs, $Rhs, Sized }
-    };
-    ($Lhs: ty, $Rhs: ty, $Bound: ident) => {
-        impl<'a, 'b, A, B> PartialEq<$Rhs> for $Lhs
-        where
-            A: Array,
-            A::Item: $Bound + PartialEq<B>,
-        {
-            fn eq(&self, other: &$Rhs) -> bool {
-                if self.len() != other.len() {
-                    return false;
-                }
-                let (sa, sb) = self.as_slices();
-                let (oa, ob) = other[..].split_at(sa.len());
-                sa == oa && sb == ob
-            }
+    ($self:ident, $other:ident) => {
+        if $self.len() != $other.len() {
+            return false;
+        } else {
+            let (sa, sb) = $self.as_slices();
+            let (oa, ob) = $other[..].split_at(sa.len());
+            sa == oa && sb == ob
         }
     };
 }
 
-impl_slice_eq! { FixedVecDeque<A>, Vec<B> }
-impl_slice_eq! { FixedVecDeque<A>, &'b [B] }
-impl_slice_eq! { FixedVecDeque<A>, &'b mut [B] }
-
-macro_rules! array_impls {
-    ($($N: expr)+) => {
-        $(
-            impl_slice_eq! { FixedVecDeque<A>, [B; $N] }
-            impl_slice_eq! { FixedVecDeque<A>, &'b [B; $N] }
-            impl_slice_eq! { FixedVecDeque<A>, &'b mut [B; $N] }
-        )+
+impl<A, B> PartialEq<[B]> for FixedVecDeque<A>
+where
+    A: Array,
+    A::Item: PartialEq<B>,
+{
+    fn eq(&self, other: &[B]) -> bool {
+        impl_slice_eq!(self, other)
     }
 }
 
-array_impls! {
-     0  1  2  3  4  5  6  7  8  9
-    10 11 12 13 14 15 16 17 18 19
-    20 21 22 23 24 25 26 27 28 29
-    30 31 32
+impl<const N: usize, A, B> PartialEq<[B; N]> for FixedVecDeque<A>
+where
+    A: Array,
+    A::Item: PartialEq<B>,
+{
+    fn eq(&self, other: &[B; N]) -> bool {
+        impl_slice_eq!(self, other)
+    }
 }
 
 impl<A> PartialOrd for FixedVecDeque<A>
@@ -1584,12 +1598,6 @@ where
         self.iter().cmp(other.iter())
     }
 }
-
-impl_array!(
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20, 24, 32, 36, 0x40, 0x80, 0x100,
-    0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000, 0x40000, 0x80000,
-    0x100000
-);
 
 /// Returns the two slices that cover the `FixedVecDeque`'s valid range
 trait RingSlices: Sized {
