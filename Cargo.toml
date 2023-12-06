@@ -9,7 +9,7 @@ documentation = "https://docs.rs/fixed-vec-deque"
 readme = "README.md"
 homepage = "https://github.com/udoprog/fixed-vec-deque"
 repository = "https://github.com/udoprog/fixed-vec-deque"
-license = "MIT/Apache-2.0"
+license = "MIT OR Apache-2.0"
 keywords = ["data-structures"]
 categories = ["data-structures"]
 
