@@ -1412,7 +1412,7 @@ where
 {
     fn from_iter<T: IntoIterator<Item = A::Item>>(iter: T) -> FixedVecDeque<A> {
         let mut deq = FixedVecDeque::new();
-        deq.extend(iter.into_iter());
+        deq.extend(iter);
         deq
     }
 }
@@ -1781,7 +1781,7 @@ mod tests {
     #[test]
     fn test_extend() {
         let mut deq = FixedVecDeque::<[u32; 4]>::new();
-        deq.extend(vec![1, 2, 3, 4, 5, 6, 7, 8].into_iter());
+        deq.extend([1, 2, 3, 4, 5, 6, 7, 8]);
 
         assert!(!deq.is_empty());
         assert!(deq.is_full());

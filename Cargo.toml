@@ -13,5 +13,8 @@ license = "MIT OR Apache-2.0"
 keywords = ["data-structures"]
 categories = ["data-structures"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(nightly)'] }
+
 [features]
 unstable = []
