@@ -1617,7 +1617,7 @@ trait RingSlices: Sized {
     }
 }
 
-impl<'a, T> RingSlices for &'a [T] {
+impl<T> RingSlices for &[T] {
     fn slice(self, from: usize, to: usize) -> Self {
         &self[from..to]
     }
@@ -1627,7 +1627,7 @@ impl<'a, T> RingSlices for &'a [T] {
     }
 }
 
-impl<'a, T> RingSlices for &'a mut [T] {
+impl<T> RingSlices for &mut [T] {
     fn slice(self, from: usize, to: usize) -> Self {
         &mut self[from..to]
     }
@@ -1769,7 +1769,7 @@ mod tests {
             value: Option<&'a mut u32>,
         }
 
-        impl<'a> Drop for Foo<'a> {
+        impl Drop for Foo<'_> {
             fn drop(&mut self) {
                 if let Some(v) = self.value.take() {
                     *v += 1;
